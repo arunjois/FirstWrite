@@ -30,7 +30,7 @@ repositories {
 dependencies {
     // This dependency is used by the application.
     implementation("com.google.guava:guava:29.0-jre")
-
+    implementation ("org.xerial:sqlite-jdbc:3.31.1")
     // Use JUnit test framework
     testImplementation("junit:junit:4.13")
 }

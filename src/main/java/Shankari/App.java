@@ -31,6 +31,7 @@ public class App extends Application {
         primaryStage.setMaximized(true);
     }
     public static void main(String[] args) {
+
         launch(args);
     }
 }
