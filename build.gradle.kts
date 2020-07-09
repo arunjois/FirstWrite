@@ -17,7 +17,7 @@ plugins {
 apply(plugin = "org.openjfx.javafxplugin")
 javafx {
     version = "14"
-    modules  ("javafx.controls", "javafx.graphics", "javafx.base")
+    modules  ("javafx.controls", "javafx.graphics", "javafx.base","javafx.web")
     sdk = "./"
 }
 

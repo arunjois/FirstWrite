@@ -7,7 +7,7 @@ public class Const {
     public static String GEONAMES;
     public static void setDir() {
         switch (System.getProperty("os.name")) {
-            case "Windows 10", "Windows 7":
+            case "Windows 10": case "Windows 7":
                 SYS_DIR=System.getProperty("user.home");
                 HOME_DIR=SYS_DIR+"\\.Shankari\\";
                 EPHE_DIR=HOME_DIR+"ephe\\";
