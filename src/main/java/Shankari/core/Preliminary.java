@@ -11,54 +11,29 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class Preliminary {
-    public Files dir ;
-    public Files ephe ;
-    public Files db ;
-    public Preliminary() {
+    public Paths dir = Path.get(Const.DIR);
+    public Paths ephe = Path.get(Const.EPHE_DIR);
+    public Paths geonames = Path.get(Const.GEONAMES);
+    /*public Preliminary() {
         dir = new Files(Const.DIR);
-        /*dir = new File(Const.DIR);
-        ephe = new File(Const.EPHE_DIR);
-        db = new File(Const.DB);*/
-    }
+        ephe = new Files(Const.EPHE_DIR);
+        geonames = new Files(Const.GEONAMES);
+    }*/
     public void checkDir() {
-
-       if(!dir.exists())
-           writeEverything();
-       else if(!ephe.exists())
-           writeEphe();
-       else if(!db.exists())
-           writeDatabase();
+        if (Files.notExists(dir)) {
+            Files.createDirectories(dir);
+        }
+        if(Files.notExists(ephe)) {
+            writeEphe();
+        }
 
 
     }
-
     public void writeEverything() {
-        //dir = new Files(Const.DIR);
-        writeDatabase();
-        writeEphe();
-    }
-    public void writeDatabase() {
-        try {
-            Files.copy(Paths.get(System.getProperty("user.dir")+"//geonames.db"),
-                    Paths.get(Const.DB), StandardCopyOption.REPLACE_EXISTING);
-        }
-        catch(IOException e) {
-            System.out.println(e.getMessage());
-        }
 
     }
-    public  void writeEphe() {
-        try (Stream<Path> walk = Files.walk(Paths.get(System.getProperty("user.dir") + File.separator + "ephe" ))) {
+    public void writeEphe() {
 
-            List<String> result = walk.filter(Files::isRegularFile)
-                    .map(x -> x.toString()).collect(Collectors.toList());
-
-            for(int i=0;i<result.size();i++) {
-                Files.copy(result.get(i),Const.EPHE_DIR,StandardCopyOption.REPLACE_EXISTING);
-            }
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
     }
+
 }
