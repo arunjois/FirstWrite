@@ -41,7 +41,7 @@ public class Preliminary {
     }
     public void writeDatabase() throws IOException {
         try{
-            Files.copy(Paths.get(System.getProperty("user.dir") + "geonames.db"),
+            Files.copy(Paths.get(System.getProperty("user.dir") + File.separator + "geonames.db"),
                     Paths.get(Const.GEONAMES), StandardCopyOption.REPLACE_EXISTING);
         }
         catch (IOException e){
