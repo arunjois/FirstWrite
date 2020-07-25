@@ -38,6 +38,16 @@ public class Preliminary {
     }
     public void writeEphe() throws IOException {
         Files.createDirectories(ephe);
+        File folder = new File(System.getProperty("user.dir") + File.separator + "ephe" + File.separator);
+        File[] listOfFiles = folder.listFiles();
+
+        for (File file : listOfFiles) {
+            if (file.isFile()) {
+                Files.copy(Paths.get( System.getProperty("user.dir") + File.separator + "ephe" + File.separator + file.getName()),
+                        Paths.get( Const.EPHE_DIR + file.getName()), StandardCopyOption.REPLACE_EXISTING);
+
+            }
+        }
     }
     public void writeDatabase() throws IOException {
         try{
@@ -50,6 +60,6 @@ public class Preliminary {
 
     }
 
-    }
+
 
 }
