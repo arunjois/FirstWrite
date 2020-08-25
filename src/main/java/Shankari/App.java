@@ -22,7 +22,7 @@ import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
-import Shankari.ui.FileMenu;
+import Shankari.ui.*;
 
 import java.io.IOException;
 
@@ -34,7 +34,7 @@ public class App extends Application {
         BorderPane root = new BorderPane();
         //root.getChildren().add(btn);
         FileMenu f = new FileMenu();
-        //ChartTab ct = new ChartTab();
+        HBoxSet hb = new HBoxSet();
         // menuBar.getMenus().addAll(f.getMenuBar());
 
         //root.getChildren().add(f.getMenuBar());
@@ -42,7 +42,7 @@ public class App extends Application {
 
         Scene scene = new Scene(root, 300, 250);
         root.setTop(f.getMenuBar());
-        //root.setCenter(ct.getTab());
+        root.setCenter(hb.getHBset());
         primaryStage.setTitle("Hello World!");
         primaryStage.setScene(scene);
         primaryStage.show();
