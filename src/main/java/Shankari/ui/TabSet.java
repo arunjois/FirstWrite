@@ -19,27 +19,15 @@
  */
 
 package Shankari.ui;
-import javafx.scene.control.TextField;
-import javafx.scene.layout.HBox;
-import javafx.scene.control.Button;
 
-public class HBoxSet {
-    HBox hbset;
-    Button back;
-    Button forward;
-    Button refresh;
-    TextField textField;
-    public HBox getHBset() {
-        return this.hbset;
-    }
-    public HBoxSet() {
-        hbset = new HBox(4);
-        back = new Button("Back");
-        forward = new Button("Forward");
-        refresh = new Button("Refresh");
-        textField = new TextField();
-        textField.setPrefWidth(800);
-        textField.setPromptText("This will hold the file details");
-        hbset.getChildren().addAll(back, forward, refresh, textField);
+import javafx.collections.ObservableList;
+import javafx.scene.control.TabPane;
+
+import java.util.ArrayList;
+
+public class TabSet {
+    ObservableList<TabPane> tabpane;
+    public TabSet() {
+
     }
 }
