@@ -22,27 +22,27 @@ import javafx.scene.control.MenuBar;
 import javafx.scene.control.MenuItem;
 
 public class FileMenu {
+    // Create MenuBar
+    MenuBar menuBar = new MenuBar();
+
+    // Create menus
+    Menu fileMenu = new Menu("File");
+    Menu editMenu = new Menu("Edit");
+    Menu helpMenu = new Menu("Help");
+
+    // Create MenuItems
+    MenuItem newItem = new MenuItem("New");
+    MenuItem openFileItem = new MenuItem("Open File");
+    MenuItem exitItem = new MenuItem("Exit");
+
+    MenuItem copyItem = new MenuItem("Copy");
+    MenuItem pasteItem = new MenuItem("Paste");
+
     public MenuBar getMenuBar() {
-        // Create MenuBar
-        MenuBar menuBar = new MenuBar();
-
-        // Create menus
-        Menu fileMenu = new Menu("File");
-        Menu editMenu = new Menu("Edit");
-        Menu helpMenu = new Menu("Help");
-
-        // Create MenuItems
-        MenuItem newItem = new MenuItem("New");
-        MenuItem openFileItem = new MenuItem("Open File");
-        MenuItem exitItem = new MenuItem("Exit");
-
-        MenuItem copyItem = new MenuItem("Copy");
-        MenuItem pasteItem = new MenuItem("Paste");
 
         //Actions on Menus
         //newItem.setOnAction(event->NewInfo.takeInfo());
-        exitItem.setOnAction(event->System.exit(0));
-
+        setexitItem();
 
 
         // Add menuItems to the Menus
@@ -53,5 +53,8 @@ public class FileMenu {
         menuBar.getMenus().addAll(fileMenu, editMenu, helpMenu);
         menuBar.useSystemMenuBarProperty().set(true);
         return menuBar;
+    }
+    public void setexitItem() {
+        exitItem.setOnAction(event->System.exit(0));
     }
 }
