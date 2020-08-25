@@ -77,7 +77,8 @@
   The trademarks 'Swiss Ephemeris' and 'Swiss Ephemeris inside' may be used
   for promoting such software, products or services.
 */
-package swisseph;
+package Shankari.swisseph;
+
 
 
 class SwephJPL
