@@ -18,25 +18,13 @@
  *
  */
 
-package Shankari.ui;
+package Shankari.jyothishya;
 
-import javafx.collections.ObservableList;
-import javafx.scene.control.Tab;
-import javafx.scene.control.TabPane;
-
-import java.util.ArrayList;
-
-public class TabSet {
-    public TabPane tabPane;
-    public Tab primary;
-    public Tab secondary;
-    public TabSet() {
-        tabPane = new TabPane();
-        primary = new Tab();
-        secondary = new Tab();
-    }
-    public TabPane getTabPane() {
-        return this.tabPane;
-    }
-
+public class Details {
+    public String name;
+    public String dob;
+    public String place;
+    public double tob;
+    public double longitude;
+    public double latitude;
 }

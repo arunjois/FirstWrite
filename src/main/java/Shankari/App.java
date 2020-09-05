@@ -43,6 +43,7 @@ public class App extends Application {
         Scene scene = new Scene(root, 300, 250);
         root.setTop(f.getMenuBar());
         root.setCenter(hb.getHBset());
+        root.setBottom();
         primaryStage.setTitle("Hello World!");
         primaryStage.setScene(scene);
         primaryStage.show();
