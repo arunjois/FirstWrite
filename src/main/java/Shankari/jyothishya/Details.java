@@ -21,9 +21,13 @@
 package Shankari.jyothishya;
 
 public class Details {
+    /*
+    *   Details that will be read from the file
+     */
     public String name;
     public String dob;
     public String place;
+    public String gender;
     public double tob;
     public double longitude;
     public double latitude;

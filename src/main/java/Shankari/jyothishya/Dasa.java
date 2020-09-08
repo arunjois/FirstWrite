@@ -20,10 +20,5 @@
 
 package Shankari.jyothishya;
 
-public class Horoscope {
-    Details details;
-    Dasa dasa;
-
-
-
+public class Dasa {
 }
