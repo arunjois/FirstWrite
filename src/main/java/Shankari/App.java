@@ -34,7 +34,7 @@ public class App extends Application {
         BorderPane root = new BorderPane();
         //root.getChildren().add(btn);
         FileMenu f = new FileMenu();
-        HBoxSet hb = new HBoxSet();
+
         // menuBar.getMenus().addAll(f.getMenuBar());
 
         //root.getChildren().add(f.getMenuBar());
@@ -42,8 +42,8 @@ public class App extends Application {
 
         Scene scene = new Scene(root, 300, 250);
         root.setTop(f.getMenuBar());
-        root.setCenter(hb.getHBset());
-        root.setBottom();
+        //root.setCenter();
+        //root.setBottom();
         primaryStage.setTitle("Hello World!");
         primaryStage.setScene(scene);
         primaryStage.show();

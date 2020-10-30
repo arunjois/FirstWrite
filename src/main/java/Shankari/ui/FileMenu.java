@@ -1,4 +1,4 @@
-/**
+/*
  *     Shankari Vedic Astrology Software
  *     Copyright (C) 2020  Arun S Jois
  *
@@ -17,32 +17,50 @@
  *     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 package Shankari.ui;
+import javafx.scene.Scene;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuBar;
 import javafx.scene.control.MenuItem;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
+
 
 public class FileMenu {
     // Create MenuBar
-    MenuBar menuBar = new MenuBar();
+    MenuBar menuBar;
 
     // Create menus
-    Menu fileMenu = new Menu("File");
-    Menu editMenu = new Menu("Edit");
-    Menu helpMenu = new Menu("Help");
+    Menu fileMenu;
+    Menu editMenu;
+    Menu helpMenu;
 
     // Create MenuItems
-    MenuItem newItem = new MenuItem("New");
-    MenuItem openFileItem = new MenuItem("Open File");
-    MenuItem exitItem = new MenuItem("Exit");
+    MenuItem newItem;
+    MenuItem openFileItem;
+    MenuItem exitItem;
 
-    MenuItem copyItem = new MenuItem("Copy");
-    MenuItem pasteItem = new MenuItem("Paste");
+    MenuItem copyItem;
+    MenuItem pasteItem;
+    public FileMenu() {
+        menuBar = new MenuBar();
+
+        fileMenu = new Menu("File");
+        editMenu = new Menu("Edit");
+        helpMenu = new Menu("Help");
+
+        newItem = new MenuItem("New");
+        openFileItem = new MenuItem("Open File");
+        exitItem = new MenuItem("Exit");
+
+        copyItem = new MenuItem("Copy");
+        pasteItem = new MenuItem("Paste");
+    }
 
     public MenuBar getMenuBar() {
 
         //Actions on Menus
         //newItem.setOnAction(event->NewInfo.takeInfo());
-        setexitItem();
+        setFileMenu();
 
 
         // Add menuItems to the Menus
@@ -54,7 +72,18 @@ public class FileMenu {
         menuBar.useSystemMenuBarProperty().set(true);
         return menuBar;
     }
-    public void setexitItem() {
+
+    void setFileMenu() {
+        setNewItem();
+        setExitItem();
+    }
+    void setExitItem() {
         exitItem.setOnAction(event->System.exit(0));
+    }
+    void setNewItem() {
+        newItem.setOnAction(e-> {
+            InfoInput.showDialog();
+        }
+        );
     }
 }

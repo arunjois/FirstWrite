@@ -22,8 +22,8 @@ package Shankari.jyothishya;
 
 public class Details {
     /*
-    *   Details that will be read from the file
-     */
+    *  Details that will be read from the file
+    */
     public String name;
     public String dob;
     public String place;
@@ -31,4 +31,14 @@ public class Details {
     public double tob;
     public double longitude;
     public double latitude;
+
+    public Details(String name, String dob, String place, String gender, double tob, double longitude, double latitude) {
+        this.name = name;
+        this.dob = dob;
+        this.place = place;
+        this.gender = gender;
+        this.tob = tob;
+        this.longitude = longitude;
+        this.latitude = latitude;
+    }
 }
