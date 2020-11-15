@@ -20,6 +20,7 @@
 
 package Shankari.ui;
 
+import Shankari.sql.Query;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
@@ -41,25 +42,15 @@ import java.awt.*;
 import java.util.ArrayList;
 
 public class InfoInput {
-    static Label date, time, country;
+    static Label date, time, country, place;
     static TextField dd, mm, yyyy, hrs, min;
+    static ComboBox<String> countryList, placeList;
     static Button okay;
     static Stage input;
     static Scene scene;
     static GridPane grid;
+    //static ObservableList<String> places = FXCollections.observableList("");
 
-   // public InfoInput() {
-   //     date = new Label("Date:");
-   //     time = new Label("Time");
-   //     country =  new Label("Country:");
-   //     dd = new TextField();
-   //     mm = new TextField();
-   //     yyyy = new TextField();
-   //     hrs = new TextField();
-   //     min = new TextField();
-   //     okay = new Button("OK");
-   //     setScene();
-   // }
 
     public static void showDialog() {
         setScene();
@@ -84,18 +75,27 @@ public class InfoInput {
         grid.add(hrs,1,1,1,1);
         grid.add(min,2,1,1,1);
         grid.add(okay,2,5,1,1);
+        grid.add(country,0,3,1,1);
+        grid.add(countryList,1,3,4,1);
+        grid.add(place,0,4,1,1);
+        //grid.add(placeList,1,4,4,1);
         scene = new Scene(grid);
     }
     public static void setNodes() {
         date = new Label("Date:");
         time = new Label("Time");
         country =  new Label("Country:");
+        place = new Label("Place");
         dd = new TextField();
         mm = new TextField();
         yyyy = new TextField();
         hrs = new TextField();
         min = new TextField();
         okay = new Button("OK");
+        countryList = new ComboBox<String>(Query.getCountryList());
+        //countryList.setOnAction();
+
+
         dd.setId("dd");
         dd.setPromptText("dd");
         dd.setStyle("-fx-pref-width:3em;-fx-pref-height:2em;");
@@ -111,8 +111,8 @@ public class InfoInput {
 
         min.setPromptText("mm");
         min.setStyle("-fx-pref-width:3em;-fx-pref-height:2em;");
+
+
     }
-    static Scene getScene(){
-        return scene;
-    }
+
 }
