@@ -105,3 +105,4 @@ ephe/seplm12.se1 filter=lfs diff=lfs merge=lfs -text
 ephe/seplm36.se1 filter=lfs diff=lfs merge=lfs -text
 ephe/semo_06.se1 filter=lfs diff=lfs merge=lfs -text
 ephe/semo_66.se1 filter=lfs diff=lfs merge=lfs -text
+geonames1000.db filter=lfs diff=lfs merge=lfs -text
