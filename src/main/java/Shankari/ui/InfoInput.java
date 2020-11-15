@@ -29,10 +29,15 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
+import javafx.scene.layout.Background;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 
+import java.awt.*;
 import java.util.ArrayList;
 
 public class InfoInput {
@@ -43,7 +48,45 @@ public class InfoInput {
     static Scene scene;
     static GridPane grid;
 
-    public InfoInput() {
+   // public InfoInput() {
+   //     date = new Label("Date:");
+   //     time = new Label("Time");
+   //     country =  new Label("Country:");
+   //     dd = new TextField();
+   //     mm = new TextField();
+   //     yyyy = new TextField();
+   //     hrs = new TextField();
+   //     min = new TextField();
+   //     okay = new Button("OK");
+   //     setScene();
+   // }
+
+    public static void showDialog() {
+        setScene();
+        input = new Stage();
+        input.initModality(Modality.APPLICATION_MODAL);
+        input.setScene(scene);
+        input.showAndWait();
+    }
+    public static void setScene() {
+        setNodes();
+        grid = new GridPane();
+        grid.setAlignment(Pos.CENTER);
+        grid.setStyle("-fx-background-color:#3498db; -fx-opacity:1;");
+        grid.setHgap(10);
+        grid.setVgap(10);
+        grid.setPadding(new Insets(0, 10, 0, 10));
+        grid.add(date,0,0);
+        grid.add(dd,1,0,1,1);
+        grid.add(mm,2,0,1,1);
+        grid.add(yyyy,3,0,1,1);
+        grid.add(time,0,1,1,1);
+        grid.add(hrs,1,1,1,1);
+        grid.add(min,2,1,1,1);
+        grid.add(okay,2,5,1,1);
+        scene = new Scene(grid);
+    }
+    public static void setNodes() {
         date = new Label("Date:");
         time = new Label("Time");
         country =  new Label("Country:");
@@ -53,93 +96,23 @@ public class InfoInput {
         hrs = new TextField();
         min = new TextField();
         okay = new Button("OK");
-    }
-    public static void showDialog() {
-        input = new Scene();
-        input.initModality(Modality.APPLICATION_MODAL);
-        input.setTitle("Info");
-        input.setMinWidth(300);
-        input.setMinHeight(300);
-
-        grid.setAlignment(Pos.CENTER);
-        grid.setHgap(10);
-        grid.setVgap(10);
-        grid.setPadding(new Insets(0, 10, 0, 10));
-        grid.setStyle("-fx-background-color:#3498db");
-
-
-        grid.add(date,0,0);
-
         dd.setId("dd");
         dd.setPromptText("dd");
         dd.setStyle("-fx-pref-width:3em;-fx-pref-height:2em;");
-        grid.add(dd,1,0,1,1);
-
 
         mm.setPromptText("mm");
         mm.setStyle("-fx-pref-width:3em;-fx-pref-height:2em;");
-        grid.add(mm,2,0,1,1);
-
 
         yyyy.setPromptText("yyyy");
         yyyy.setStyle("-fx-pref-width:3.8em;-fx-pref-height:2em;");
-        grid.add(yyyy,3,0,1,1);
 
-
-        grid.add(time,0,1,1,1);
-
-
-        hrs.setPromptText("HH");
+        hrs.setPromptText("hh");
         hrs.setStyle("-fx-pref-width:3em;-fx-pref-height:2em;");
-        grid.add(hrs,1,1,1,1);
 
-
-        min.setPromptText("MM");
+        min.setPromptText("mm");
         min.setStyle("-fx-pref-width:3em;-fx-pref-height:2em;");
-        grid.add(min,2,1,1,1);
-
-
-        grid.add(country,0,3,1,1);
-        //Country con = new Country();
-        ArrayList<String> abc = new ArrayList<String>();
-        abc.add("Wjhat");
-        abc.add("cat");
-        abc.add("dog");
-        //ObservableList<String> observableList = FXCollections.observableList(abc.toString());
-
-        ObservableList<String> options =
-                FXCollections.observableArrayList(
-                        abc.toString()
-                );
-
-        String c = new String("What");
-        ComboBox<String> countryList = new ComboBox<String>(options);
-        grid.add(countryList,1,3,4,1);
-        /*
-         * Set Action on Combo box
-         */
-        countryList.setOnAction(e->{
-            //Country.getPlace(countryList.getSelectionModel().selectedItemProperty().getValue());
-            System.out.println(countryList.getSelectionModel().selectedItemProperty().getValue());
-        });
-        countryList.getSelectionModel().selectFirst();
-        Label place = new Label("Place:");
-        grid.add(place,0,4,1,1);
-
-        String tmp = countryList.getSelectionModel().selectedItemProperty().getValue();
-        ComboBox<String> placeList = new ComboBox<String>(
-                FXCollections.observableArrayList("Waht")
-        );
-        grid.add(placeList,1,4,4,1);
-
-
-        grid.add(okay,2,5,1,1);
-
-        scene = new Scene(grid);
-        input.setScene(scene);
-        input.showAndWait();
     }
-    public void setInput() {
-
+    static Scene getScene(){
+        return scene;
     }
 }
