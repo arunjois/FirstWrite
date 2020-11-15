@@ -63,7 +63,7 @@ public class  Query {
         int i=0;
         try {
             Class.forName("org.sqlite.JDBC");
-            c = DriverManager.getConnection("jdbc:sqlite:geonames1000.db");
+            c = DriverManager.getConnection("jdbc:sqlite:" + Const.GEONAMES);
             stmt = c.createStatement();
             ResultSet rs = stmt.executeQuery(
                     //"SELECT name FROM geonames where country_code = \""+ query + "\" " );
