@@ -78,7 +78,7 @@ public class InfoInput {
         grid.add(country,0,3,1,1);
         grid.add(countryList,1,3,4,1);
         grid.add(place,0,4,1,1);
-        //grid.add(placeList,1,4,4,1);
+        grid.add(placeList,1,4,4,1);
         scene = new Scene(grid);
     }
     public static void setNodes() {
@@ -93,7 +93,14 @@ public class InfoInput {
         min = new TextField();
         okay = new Button("OK");
         countryList = new ComboBox<String>(Query.getCountryList());
+        countryList.getSelectionModel().selectFirst();
         //countryList.setOnAction();
+        //countryList.setEditable(true);
+        countryList.setOnAction(e-> {
+            loadComboBox();
+        });
+        ObservableList<String> novalue = FXCollections.observableArrayList("NUll");
+        placeList = new ComboBox<String>(novalue);
 
 
         dd.setId("dd");
@@ -113,6 +120,10 @@ public class InfoInput {
         min.setStyle("-fx-pref-width:3em;-fx-pref-height:2em;");
 
 
+    }
+    static void loadComboBox() {
+        placeList.getItems().clear();
+        placeList.getItems().addAll(Query.getPlace(countryList.getSelectionModel().selectedItemProperty().getValue()));
     }
 
 }
