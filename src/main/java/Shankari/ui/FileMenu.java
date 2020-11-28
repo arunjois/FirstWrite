@@ -19,15 +19,12 @@
 package Shankari.ui;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
-import javafx.scene.Scene;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuBar;
 import javafx.scene.control.MenuItem;
 import javafx.stage.FileChooser;
-import javafx.stage.Modality;
 import javafx.stage.Stage;
 
-import java.awt.*;
 import java.io.File;
 
 
@@ -95,6 +92,11 @@ public class FileMenu {
     }
     void setOpenFileItem() {
         FileChooser fileChooser = new FileChooser();
+        fileChooser.getExtensionFilters().addAll(
+                new FileChooser.ExtensionFilter("All Files","*.*"),
+                new FileChooser.ExtensionFilter("Maiterya File", "*.mtx"),
+                new FileChooser.ExtensionFilter("Jagannatha Hora", "*.jhd")
+        );
         EventHandler<ActionEvent> fileChooseEvent = new EventHandler<ActionEvent>() {
             public void handle(ActionEvent e) {
                 File file = fileChooser.showOpenDialog(new Stage());
