@@ -17,12 +17,18 @@
  *     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 package Shankari.ui;
+import javafx.event.ActionEvent;
+import javafx.event.EventHandler;
 import javafx.scene.Scene;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuBar;
 import javafx.scene.control.MenuItem;
+import javafx.stage.FileChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
+
+import java.awt.*;
+import java.io.File;
 
 
 public class FileMenu {
@@ -76,6 +82,7 @@ public class FileMenu {
     void setFileMenu() {
         setNewItem();
         setExitItem();
+        setOpenFileItem();
     }
     void setExitItem() {
         exitItem.setOnAction(event->System.exit(0));
@@ -85,5 +92,17 @@ public class FileMenu {
             InfoInput.showDialog();
         }
         );
+    }
+    void setOpenFileItem() {
+        FileChooser fileChooser = new FileChooser();
+        EventHandler<ActionEvent> fileChooseEvent = new EventHandler<ActionEvent>() {
+            public void handle(ActionEvent e) {
+                File file = fileChooser.showOpenDialog(new Stage());
+                if (file != null) {
+                   System.out.println(file.getAbsolutePath());
+                }
+            }
+        };
+        openFileItem.setOnAction(fileChooseEvent);
     }
 }

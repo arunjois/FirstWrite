@@ -126,7 +126,7 @@ public class  Query {
                 i++;
 
             }
-            System.out.println(ar);
+            //System.out.println(ar);
 
         }
         catch ( Exception e ) {

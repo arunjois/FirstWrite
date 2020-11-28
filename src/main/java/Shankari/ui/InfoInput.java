@@ -99,6 +99,9 @@ public class InfoInput {
         countryList.setOnAction(e-> {
             loadComboBox();
         });
+        /*okay.setOnAction(
+                loadBaseData();
+        );*/
         ObservableList<String> novalue = FXCollections.observableArrayList("NUll");
         placeList = new ComboBox<String>(novalue);
 
@@ -124,6 +127,9 @@ public class InfoInput {
     static void loadComboBox() {
         placeList.getItems().clear();
         placeList.getItems().addAll(Query.getPlace(countryList.getSelectionModel().selectedItemProperty().getValue()));
+    }
+    static void loadBaseData() {
+
     }
 
 }
