@@ -20,5 +20,17 @@
 
 package Shankari.core;
 
+import java.io.File;
+import java.util.List;
+
 public class ReadFile {
+    List<File> file;
+    public ReadFile(List<File> p) {
+        file = p;
+    }
+    void openFile() {
+        for (File x : file) {
+
+        }
+    }
 }
