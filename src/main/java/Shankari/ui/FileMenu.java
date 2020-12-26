@@ -28,7 +28,6 @@ import javafx.stage.Stage;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.LinkedList;
 import java.util.List;
 
 
@@ -107,8 +106,8 @@ public class FileMenu {
                 if (file != null) {
                     ReadFile readFile = new ReadFile(file);
                     System.out.println(file.get(0).getAbsoluteFile());
+                    readFile.openFile();
                 }
-
             }
         };
         openFileItem.setOnAction(fileChooseEvent);

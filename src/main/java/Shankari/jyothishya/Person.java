@@ -20,7 +20,7 @@
 
 package Shankari.jyothishya;
 
-public class Details {
+public class Person {
     /*
     *  Details that will be read from the file
     */
@@ -32,7 +32,7 @@ public class Details {
     public double longitude;
     public double latitude;
 
-    public Details(String name, String dob, String place, String gender, double tob, double longitude, double latitude) {
+    public Person(String name, String dob, String place, String gender, double tob, double longitude, double latitude) {
         this.name = name;
         this.dob = dob;
         this.place = place;

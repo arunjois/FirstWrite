@@ -20,9 +20,18 @@
 
 package Shankari.jyothishya;
 
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+
+import java.util.ArrayList;
+
 public class Horoscope {
-    Details details;
+    Person person;
     Dasa dasa;
+    ArrayList list = new ArrayList();
+    public ObservableList addHoro() {
+        return FXCollections.observableList(list);
+    }
 
 
 

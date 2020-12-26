@@ -20,16 +20,32 @@
 
 package Shankari.core;
 
+import Shankari.App;
+import Shankari.jyothishya.Horoscope;
+import Shankari.jyothishya.Person;
+
 import java.io.File;
 import java.util.List;
+import java.util.Scanner;
 
 public class ReadFile {
     List<File> file;
     public ReadFile(List<File> p) {
         file = p;
     }
-    void openFile() {
+    public void openFile() {
         for (File x : file) {
+            System.out.println(x.getAbsoluteFile());
+            String path = x.getAbsolutePath().substring(x.getAbsolutePath().lastIndexOf(File.separator)+1);
+            Scanner scanner = new Scanner(path);
+            if (path.substring(path.lastIndexOf(".")).equals(".mtx")) {
+                System.out.println("True");
+
+
+            }
+            else {
+                System.out.println("False");
+            }
 
         }
     }

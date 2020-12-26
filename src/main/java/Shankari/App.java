@@ -18,7 +18,10 @@
  */
 package Shankari;
 import Shankari.core.Preliminary;
+import Shankari.jyothishya.Horoscope;
 import javafx.application.Application;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.scene.Scene;
 import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
@@ -27,21 +30,26 @@ import Shankari.ui.*;
 import java.io.IOException;
 
 public class App extends Application {
+    Horoscope horo = new Horoscope(/*Current date and time*/);
+    public  ObservableList<Horoscope> horoscopes = FXCollections.observableList(horo.addHoro());
+    BorderPane root;
+    FileMenu fileMenu;
+    Scene scene;
 
     @Override
     public void start(Stage primaryStage) {
 
-        BorderPane root = new BorderPane();
+        root = new BorderPane();
         //root.getChildren().add(btn);
-        FileMenu f = new FileMenu();
+        fileMenu = new FileMenu();
 
         // menuBar.getMenus().addAll(f.getMenuBar());
 
         //root.getChildren().add(f.getMenuBar());
 
 
-        Scene scene = new Scene(root, 300, 250);
-        root.setTop(f.getMenuBar());
+        scene = new Scene(root, 300, 250);
+        root.setTop(fileMenu.getMenuBar());
         //root.setCenter();
         //root.setBottom();
         primaryStage.setTitle("Hello World!");
