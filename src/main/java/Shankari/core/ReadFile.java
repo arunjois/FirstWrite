@@ -40,8 +40,6 @@ public class ReadFile {
             Scanner scanner = new Scanner(path);
             if (path.substring(path.lastIndexOf(".")).equals(".mtx")) {
                 System.out.println("True");
-
-
             }
             else {
                 System.out.println("False");

@@ -18,21 +18,38 @@
  *
  */
 
-package Shankari.jyothishya;
+package Shankari.core;
 
-import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
+public class Date {
+    int day,mon,year;
 
-import java.util.ArrayList;
-
-public class Horoscope {
-    Person person;
-    Dasa dasa;
-    public Horoscope(Person p) {
-        person = p;
+    public void setDay(int day) {
+        this.day = day;
     }
 
+    public void setMon(int mon) {
+        this.mon = mon;
+    }
 
+    public void setYear(int year) {
+        this.year = year;
+    }
 
+    public int getDay() {
+        return day;
+    }
 
+    public int getMon() {
+        return mon;
+    }
+
+    public int getYear() {
+        return year;
+    }
+
+    public Date(int d, int m, int y){
+        day = d;
+        mon = m;
+        year = y;
+    }
 }

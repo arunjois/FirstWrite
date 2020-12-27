@@ -20,19 +20,22 @@
 
 package Shankari.jyothishya;
 
+import Shankari.core.Date;
+import Shankari.core.Time;
+
 public class Person {
     /*
     *  Details that will be read from the file
     */
     public String name;
-    public String dob;
+    public Date dob;
     public String place;
-    public String gender;
-    public double tob;
+    public boolean gender;
+    public Time tob;
     public double longitude;
     public double latitude;
 
-    public Person(String name, String dob, String place, String gender, double tob, double longitude, double latitude) {
+    public Person(String name, Date dob, String place, boolean gender, Time tob, double longitude, double latitude) {
         this.name = name;
         this.dob = dob;
         this.place = place;

@@ -18,21 +18,46 @@
  *
  */
 
-package Shankari.jyothishya;
+package Shankari.core;
 
-import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
+public class Time {
+    int hrs;
+    int min;
+    int sec;
 
-import java.util.ArrayList;
+    public void setHrs(int hrs) {
+        this.hrs = hrs;
+    }
 
-public class Horoscope {
-    Person person;
-    Dasa dasa;
-    public Horoscope(Person p) {
-        person = p;
+    public void setMin(int min) {
+        this.min = min;
+    }
+
+    public void setSec(int sec) {
+        this.sec = sec;
+    }
+
+    public int getHrs() {
+        return hrs;
+    }
+
+    public int getMin() {
+        return min;
+    }
+
+    public int getSec() {
+        return sec;
     }
 
 
-
-
+    public Time(int h, int m) {
+        hrs = h;
+        min = m;
+        sec = 00;
+    }
+    public Time(int h, int m, int s) {
+        hrs = h;
+        min = m;
+        sec = s;
+    }
 }

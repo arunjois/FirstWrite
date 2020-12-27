@@ -18,7 +18,6 @@
  */
 package Shankari;
 import Shankari.core.Preliminary;
-import Shankari.jyothishya.Horoscope;
 import javafx.application.Application;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -30,8 +29,6 @@ import Shankari.ui.*;
 import java.io.IOException;
 
 public class App extends Application {
-    Horoscope horo = new Horoscope(/*Current date and time*/);
-    public  ObservableList<Horoscope> horoscopes = FXCollections.observableList(horo.addHoro());
     BorderPane root;
     FileMenu fileMenu;
     Scene scene;
