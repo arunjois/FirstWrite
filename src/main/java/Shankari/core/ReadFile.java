@@ -1,6 +1,6 @@
 /*
  *     Shankari Vedic Astrology Software
- *     Copyright (C) 2020  Arun S Jois
+ *     Copyright (C) 2021  Arun S Jois
  *
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by

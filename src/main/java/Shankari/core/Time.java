@@ -1,6 +1,6 @@
 /*
  *     Shankari Vedic Astrology Software
- *     Copyright (C) 2020  Arun S Jois
+ *     Copyright (C) 2021  Arun S Jois
  *
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -21,9 +21,7 @@
 package Shankari.core;
 
 public class Time {
-    int hrs;
-    int min;
-    int sec;
+    public int hrs,min,sec;
 
     public void setHrs(int hrs) {
         this.hrs = hrs;
@@ -49,15 +47,14 @@ public class Time {
         return sec;
     }
 
-
-    public Time(int h, int m) {
-        hrs = h;
-        min = m;
-        sec = 00;
-    }
-    public Time(int h, int m, int s) {
+    public Time(int h, int m, int s){
         hrs = h;
         min = m;
         sec = s;
+    }
+    public Time(int h , int m) {
+        hrs = h;
+        min = m;
+        sec = 00;
     }
 }

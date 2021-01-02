@@ -1,6 +1,6 @@
 /*
  *     Shankari Vedic Astrology Software
- *     Copyright (C) 2020  Arun S Jois
+ *     Copyright (C) 2021  Arun S Jois
  *
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -29,18 +29,18 @@ public class Person {
     */
     public String name;
     public Date dob;
+    public Time time;
     public String place;
-    public boolean gender;
-    public Time tob;
+    public char gender;
     public double longitude;
     public double latitude;
 
-    public Person(String name, Date dob, String place, boolean gender, Time tob, double longitude, double latitude) {
+    public Person(String name, Date dob, Time time, String place, char gender, double longitude, double latitude) {
         this.name = name;
         this.dob = dob;
+        this.time = time;
         this.place = place;
         this.gender = gender;
-        this.tob = tob;
         this.longitude = longitude;
         this.latitude = latitude;
     }

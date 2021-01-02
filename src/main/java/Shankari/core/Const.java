@@ -1,6 +1,6 @@
 /**
  *     Shankari Vedic Astrology Software
- *     Copyright (C) 2020  Arun S Jois
+ *     Copyright (C) 2021  Arun S Jois
  *
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -22,7 +22,10 @@ import java.io.File;
 
 public class Const {
     public static final String HOME = System.getProperty("user.home");
-    public static final String DIR  = HOME + File.separator + ".shankari";
+    public static final String DIR = HOME + File.separator + ".shankari";
     public static final String EPHE_DIR = DIR + File.separator + "ephe" + File.separator;
     public static final String GEONAMES = DIR + File.separator + "geonames1000.db" ;
+    public static final String PLACE = "HASSAN";
+    public static final double LONGITUDE = 76.0962;
+    public static final double LATITUDE = 13.00715;
 }
