@@ -20,10 +20,8 @@
 
 package Shankari.jyothishya;
 
-import Shankari.core.Date;
 import Shankari.swisseph.SweConst;
 import Shankari.swisseph.SweDate;
-import Shankari.swisseph.SwissData;
 import Shankari.swisseph.SwissEph;
 
 import java.util.HashMap;
@@ -31,15 +29,6 @@ import java.util.HashMap;
 
 
 public class Horoscope {
-    public enum Planets {
-        SUN,
-        MOON,
-        MERCURY,
-        VENUS,
-        MARS,
-        JUPITER,
-        SATURN
-    }
     Person person;
     HashMap<String, Double> basic = new HashMap<String, Double>();
     Dasa dasa;
@@ -48,7 +37,7 @@ public class Horoscope {
     }
     public void calcBasic() {
         SwissEph swe = new SwissEph();
-        SweDate sweDate = new SweDate(person.dob.getYear(), person.dob.getMon(), person.dob.getDay(), person.getTime()) ;
+        SweDate sweDate = new SweDate(person.dob.getYear(), person.dob.getMon(), person.dob.getDay(), person.getTime());
         double[] cusps = new double[13];
         double[] acsc = new double[10];
         double[] xp = new double[6];
@@ -61,6 +50,7 @@ public class Horoscope {
         // systems
         // prefer
         // SE_MEAN_NODE
+        int ascSign = (int) (acsc[0] / 30) + 1;
 
         flags = SweConst.SEFLG_SWIEPH | // fastest method, requires data files
                 SweConst.SEFLG_SIDEREAL | // sidereal zodiac
@@ -71,6 +61,27 @@ public class Horoscope {
         int sign;
         int house;
         boolean retrograde = false;
+        for (int p = 0; p < planets.length; p++) {
+            int planet = planets[p];
+            String planetName = swe.swe_get_planet_name(planet);
+            int ret = swe.swe_calc_ut(sweDate.getJulDay(), planet, flags, xp, serr);
+
+            if (ret != flags) {
+                if (serr.length() > 0) {
+                    System.err.println("Warning: " + serr);
+                } else {
+                    System.err.println(String.format("Warning, different flags used (0x%x)", ret));
+                }
+            }
+            sign = (int) (xp[0] / 30) + 1;
+            house = (sign + 12 - ascSign) % 12 + 1;
+            retrograde = (xp[3] < 0);
+            basic.put(planetName,xp[0]);
+        }
+        xp[0] = (xp[0] + 180.0) % 360;
+        String planetName = "Ketu (true)";
+        basic.put(planetName,xp[0]);
+
 
     }
     public void calcChart() {
