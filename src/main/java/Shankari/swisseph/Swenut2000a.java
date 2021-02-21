@@ -55,6 +55,7 @@
 package Shankari.swisseph;
 
 public class Swenut2000a
+		implements java.io.Serializable
 		{
   /* 0.1 microarcsecond to degrees */
   static final double O1MAS2DEG = 1 / 3600.0 / 10000000.0;

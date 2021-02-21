@@ -69,6 +69,7 @@
 package Shankari.swisseph;
 
 class TopoData
+		implements java.io.Serializable
 		{
   double geolon, geolat, geoalt;
   double teval;

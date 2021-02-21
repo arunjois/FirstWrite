@@ -78,6 +78,7 @@ package Shankari.swisseph;
 * @version 1.0.0a
 */
 class Houses
+		implements java.io.Serializable
 		{
   /**
   * The twelve house cusps from cusp[1] to cusp[12] plus many additional

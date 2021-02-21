@@ -79,6 +79,7 @@ package Shankari.swisseph;
 * @version 1.0.0a
 */
 public class SweConst
+		implements java.io.Serializable
 		{
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -363,6 +364,19 @@ public class SweConst
   */
   public static final int SE_NASCMC=8;
 
+  /*
+   * only used for experimenting with various JPL ephemeris files
+   * which are available at Astrodienst's internal network
+   */
+  public static final int SE_DE_NUMBER=431;
+  public static final String SE_FNAME_DE200="de200.eph";
+  public static final String SE_FNAME_DE403="de403.eph";
+  public static final String SE_FNAME_DE404="de404.eph";
+  public static final String SE_FNAME_DE405="de405.eph";
+  public static final String SE_FNAME_DE406="de406.eph";
+  public static final String SE_FNAME_DE431="de431.eph";
+  public static final String SE_FNAME_DFT=SE_FNAME_DE431;
+  public static final String SE_FNAME_DFT2=SE_FNAME_DE406;
 
   /*
    * flag bits for parameter iflag in function swe_calc()
@@ -556,18 +570,46 @@ public class SweConst
   public static final int SE_HSYS_WHOLE_SIGN = 'W';
 
   /**
+  * Use the calculation routines that use the ephemeris data files of the
+  * Solar System Dynamics Group of the Jet Propulsion Laboratory of NASA
+  * <A HREF="http://ssd.jpl.nasa.gov/">http://ssd.jpl.nasa.gov/</A>. This
+  * requires you to have the ephemeris data files from JPL (DE406: about
+  * 9.5&nbsp;MB per 300&nbsp;years). They can be obtained from
+  * <A HREF="ftp://navigator.jpl.nasa.gov/pub/ephem/export">
+  * ftp://navigator.jpl.nasa.gov/pub/ephem/export</A> (as of December 21, 2000).
+  * @see SwissEph#swe_set_ephe_path(java.lang.String)
+  */
+  public static final int SEFLG_JPLEPH=1;
+  /**
+  * Use the calculation routines of Swiss Ephemeris from Astrodienst&nbsp;AG
+  * Z&uuml;rich <A HREF="http://www.astro.com">http://www.astro.com</A>. This
+  * requires you to have the data files for SwissEphemeris available and in
+  * the search path for the ephemeris files.<BR>
+  * Basically, these routines are
+  * identical to the JPL routines, but the data files are <I>much</I> more
+  * compressed (about one 10th of the original JPL files), and the exactness
+  * is retained to 1/1000 of an arc second.
+  * @see SwissEph#swe_set_ephe_path(java.lang.String)
+  */
+  public static final int SEFLG_SWIEPH=2;
+  /**
   * Use the Moshier semi-analytical calculation routines.
+  * These routines are the slowest (about 10 times slower than
+  * JPL or SWISS EPHEMERIS) and most
+  * inaccurate, but they do not require any additional data files.<BR>
   * The accuracy is about 1 arc seconds for the planets and a few arc seconds
   * for the moon. Unfortunately, the deviation for true lunar nodes may be
   * up to one arc minute.
   */
   public static final int SEFLG_MOSEPH=4;
   /**
-  * Defines the default method of calculation as SEFLG_MOSEPH.
+  * Defines the default method of calculation as SEFLG_SWIEPH.
+  * @see swisseph.SweConst#SEFLG_JPLEPH
+  * @see swisseph.SweConst#SEFLG_SWIEPH
   * @see swisseph.SweConst#SEFLG_MOSEPH
   */
-  public static final int SEFLG_DEFAULTEPH=SEFLG_MOSEPH;
-  public static final int SEFLG_EPHMASK=1|2|SEFLG_MOSEPH;
+  public static final int SEFLG_DEFAULTEPH=SEFLG_SWIEPH;
+  public static final int SEFLG_EPHMASK=SEFLG_JPLEPH|SEFLG_SWIEPH|SEFLG_MOSEPH;
 
   public static final int SE_SIDBITS             =256;
   /* for projection onto ecliptic of t0 */
@@ -742,16 +784,28 @@ public class SweConst
   public static final int SE_SIDM_ARYABHATA_MSUN =24;
   /**
   * A constant to be used for specifying the sidereal mode (ayanamsha) as
-  * SE_SIDM_SS_REVATI (SS, Revati/zePsc at polar long. 359°50').
+  * SE_SIDM_SS_REVATI (SS, Revati/zePsc at polar long. 359��50').
   * @see SwissEph#swe_set_sid_mode(int, double, double)
   */
   public static final int SE_SIDM_SS_REVATI      =25;
   /**
   * A constant to be used for specifying the sidereal mode (ayanamsha) as
-  * SE_SIDM_SS_CITRA (SS, Citra/Spica at polar long. 180°).
+  * SE_SIDM_SS_CITRA (SS, Citra/Spica at polar long. 180��).
   * @see SwissEph#swe_set_sid_mode(int, double, double)
   */
   public static final int SE_SIDM_SS_CITRA       =26;
+  /**
+  * A constant to be used for specifying the sidereal mode (ayanamsha) as
+  * SE_SIDM_TRUE_CITRA (True Spica (Spica exactly at 0 Libra)
+  * @see SwissEph#swe_set_sid_mode(int, double, double)
+  */
+  public static final int SE_SIDM_TRUE_CITRA     =27;
+  /**
+  * A constant to be used for specifying the sidereal mode (ayanamsha) as
+  * SE_SIDM_TRUE_REVATI (True Revati (zeta Psc exactly at 0 Aries))
+  * @see SwissEph#swe_set_sid_mode(int, double, double)
+  */
+  public static final int SE_SIDM_TRUE_REVATI    =28;
   /**
   * A constant to be used for specifying the sidereal mode (ayanamsha) as
   * SE_SIDM_TRUE_PUSHYA (True Pushya (delta Cnc exactly a 16 Cancer))
@@ -799,10 +853,18 @@ public class SweConst
   public static final int SE_SPLIT_DEG_ROUND_MIN =  2;
   public static final int SE_SPLIT_DEG_ROUND_DEG =  4;
   public static final int SE_SPLIT_DEG_ZODIACAL  =  8;
+  /**
+  * SwissLib.swe_split_deg(): Don't round to next sign, e.g. 29.9999999 will
+  * be rounded to 29d59'59" (or 29d59' or 29d)
+  */
   public static final int SE_SPLIT_DEG_KEEP_SIGN = 16;
                                           /* don't round to next sign,
                                            * e.g. 29.9999999 will be rounded
                                            * to 29d59'59" (or 29d59' or 29d) */
+  /**
+  * SwissLib.swe_split_deg(): Don't round to next degree, e.g. 13.9999999 will
+  * be rounded to 13d59'59" (or 13d59' or 13d)
+  */
   public static final int SE_SPLIT_DEG_KEEP_DEG  = 32;
                                           /* don't round to next degree
                                            * e.g. 13.9999999 will be rounded
@@ -867,7 +929,7 @@ public class SweConst
   public static final double SE_TIDAL_DE406       =  (-25.826);  /* was (-25.7376) until V. 1.76.2 */
   public static final double SE_TIDAL_DE421       =  (-25.85);   /* JPL Interoffice Memorandum 14-mar-2008 on DE421 Lunar Orbit */
   public static final double SE_TIDAL_DE430       =  (-25.82);   /* JPL Interoffice Memorandum 9-jul-2013 on DE430 Lunar Orbit */
-  public static final double SE_TIDAL_DE431       =  (-25.80);   /* IPN Progress Report 42-196 • February 15, 2014, p. 15 */
+  public static final double SE_TIDAL_DE431       =  (-25.80);   /* IPN Progress Report 42-196 �Ǜ February 15, 2014, p. 15 */
   public static final double SE_TIDAL_26          =  (-26.0);
   public static final double SE_TIDAL_DEFAULT     =  SE_TIDAL_DE431;
   public static final double SE_TIDAL_AUTOMATIC   =  999999;

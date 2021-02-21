@@ -55,6 +55,7 @@
 package Shankari.swisseph;
 
 public class Swenut2000a_npl
+		implements java.io.Serializable
 		{
 /* //ifdef NUT_IAU_2000A */
   /* Planetary argument multipliers

@@ -72,6 +72,8 @@ import java.util.Calendar;
 import java.util.TimeZone;
 import java.util.Date;
 
+import java.time.LocalDateTime;
+
 /**
 * This class is a date class specialized for the use with the swisseph
 * package. You will like to use it, if you need a Julian Day number or
@@ -88,6 +90,7 @@ import java.util.Date;
 * @version 1.0.0c
 */
 public class SweDate
+		implements java.io.Serializable
 		{
 
   private static SwissEph sw = new SwissEph();	// Just a default
@@ -923,8 +926,33 @@ public class SweDate
 // tid_acc.set(SweConst.SE_TIDAL_DE404);
         return;
       }
+      if ((iflag & SweConst.SEFLG_JPLEPH) != 0) {
+        if (sw.swed.jpl_file_is_open) {
+	  denum = sw.swed.jpldenum;
+        } else {
+	  tjd_et = tjd_ut + SweDate.getDeltaT(tjd_ut);
+	  iflag = SweConst.SEFLG_JPLEPH|SweConst.SEFLG_J2000|SweConst.SEFLG_TRUEPOS|SweConst.SEFLG_ICRS|SweConst.SEFLG_BARYCTR;
+	  retval = sw.swe_calc(tjd_et, SweConst.SE_JUPITER, iflag, xx, null);
+	  if (sw.swed.jpl_file_is_open && (retval & SweConst.SEFLG_JPLEPH) != 0) {
+	    denum = sw.swed.jpldenum;
+	  }
+        }
+      }
+      /* SEFLG_SWIEPH wanted or SEFLG_JPLEPH failed: */
       if (denum == 0) {
-	denum = 404; /* DE number of Moshier ephemeris */
+        tjd_et = tjd_ut + SweDate.getDeltaT(tjd_ut);
+        if (sw.swed.fidat[SwephData.SEI_FILE_MOON].fptr == null ||
+          tjd_et < sw.swed.fidat[SwephData.SEI_FILE_MOON].tfstart + 1 ||
+	  tjd_et > sw.swed.fidat[SwephData.SEI_FILE_MOON].tfend - 1) {
+	  iflag = SweConst.SEFLG_SWIEPH|SweConst.SEFLG_J2000|SweConst.SEFLG_TRUEPOS|SweConst.SEFLG_ICRS;
+	  sw.swe_calc(tjd_et, SweConst.SE_MOON, iflag, xx, null);
+        }
+        if (sw.swed.fidat[SwephData.SEI_FILE_MOON].fptr != null) {
+	  denum = sw.swed.fidat[SwephData.SEI_FILE_MOON].sweph_denum;
+        /* Moon ephemeris file is not available, default to Moshier ephemeris */
+        } else {
+	  denum = 404; /* DE number of Moshier ephemeris */
+        }
       }
     }
     switch(denum) {
@@ -953,6 +981,7 @@ public class SweDate
   * This method is needed to have a consistent global SwissData object "swed",
   * whose contents may determine the tidal acceleration. Called from the
   * SwissEph constructor only.
+  * @param swiss The SwissEph object to be used
   */
   protected static void setSwissEphObject(SwissEph swiss) {
     sw = swiss;
@@ -969,7 +998,7 @@ public class SweDate
     hour = 60 * (hour - (int)hour);
     h += (hour<10?"0":"") + (int)hour + ":";
     hour = 60 * (hour - (int)hour);
-    h += (hour<10?"0":"") + hour ;
+    h += (hour<10?"0":"") + ((int)(hour*100))/100.;
 
     return "(YYYY/MM/DD) " +
            getYear() + "/" +
@@ -1345,7 +1374,8 @@ public class SweDate
     double p, B, B2, Y, dd;
     double d[] = new double[6];
     int i, iy, k;
-    int tabsiz = TABSIZ;
+    /* read additional values from swedelta.txt */
+    int tabsiz = init_dt();
     int tabend = TABSTART + tabsiz - 1;
     /*Y = 2000.0 + (tjd - J2000)/365.25;*/
     Y = 2000.0 + (tjd - SwephData.J2000)/365.2425;
@@ -1520,6 +1550,65 @@ public class SweDate
   }
 
 
+  /* Read delta t values from external file.
+   * record structure: year(whitespace)delta_t in 0.01 sec.
+   */
+  private static int init_dt() {
+    FilePtr fp = null;
+    int year;
+    int tab_index;
+    int tabsiz;
+    int i;
+    String s;
+    if (!init_dt_done) {
+      init_dt_done = true;
+      /* no error message if file is missing */
+      try {
+        if ((fp = sw.swi_fopen(-1, "swe_deltat.txt", sw.swed.ephepath, null)) == null &&
+            (fp = sw.swi_fopen(-1, "sedeltat.txt", sw.swed.ephepath, null)) == null) {
+          return TABSIZ;  // I think, I could skip this one...
+        }
+      } catch (SwissephException se) {
+        try {
+          if ((fp = sw.swi_fopen(-1, "sedeltat.txt", sw.swed.ephepath, null)) == null) {
+            return TABSIZ;  // I think, I could skip this one...
+          }
+        } catch (SwissephException se2) {
+          return TABSIZ;
+        }
+      }
+      try {
+        while ((s=fp.readLine()) != null) {
+          s.trim();
+          if (s.length() == 0 || s.charAt(0) == '#') {
+            continue;
+          }
+          year = SwissLib.atoi(s);
+          tab_index = year - TABSTART;
+          /* table space is limited. no error msg, if exceeded */
+          if (tab_index >= TABSIZ_SPACE)
+            continue;
+          if (s.length() > 4) {
+            s = s.substring(4).trim();
+          }
+          /*dt[tab_index] = (short) (atof(sp) * 100 + 0.5);*/
+          dt[tab_index] = (short)SwissLib.atof(s);
+        }
+      } catch (java.io.IOException e) {
+      }
+      try { fp.close(); } catch (java.io.IOException e) {}
+    }
+    /* find table size */
+    tabsiz = 2001 - TABSTART + 1;
+    for (i = tabsiz - 1; i < TABSIZ_SPACE; i++) {
+      if (dt[i] == 0)
+        break;
+      else
+        tabsiz++;
+    }
+    tabsiz--;
+    return tabsiz;
+  }
 
   /* Astronomical Almanac table is corrected by adding the expression
    *     -0.000091 (ndot + 26)(year-1955)^2  seconds
@@ -1728,7 +1817,50 @@ public class SweDate
   /* Read additional leap second dates from external file, if given.
    */
   private int init_leapsec() {
-    return NLEAP_SECONDS;
+    FilePtr fp = null;
+    int ndat, ndat_last;
+    int tabsiz = 0;
+    int i;
+    String s;
+    if (!init_leapseconds_done) {
+      init_leapseconds_done = true;
+      tabsiz = NLEAP_SECONDS;
+      ndat_last = leap_seconds[NLEAP_SECONDS - 1];
+      /* no error message if file is missing */
+      try {
+        if ((fp = sw.swi_fopen(-1, "seleapsec.txt", sw.swed.ephepath, null)) == null)
+          return NLEAP_SECONDS;
+        while ((s=fp.readLine()) != null) {
+          s.trim();
+          if (s.startsWith("#") || s.length() == 0)
+            continue;
+          ndat = SwissLib.atoi(s);
+          if (ndat <= ndat_last)
+            continue;
+          /* table space is limited. no error msg, if exceeded */
+          if (tabsiz >= NLEAP_SECONDS_SPACE)
+            return tabsiz;
+          leap_seconds[tabsiz] = ndat;
+          tabsiz++;
+        }
+        if (tabsiz > NLEAP_SECONDS) leap_seconds[tabsiz] = 0; /* end mark */
+        fp.close();
+      } catch (java.io.IOException e) {
+      } catch (SwissephException e) {
+        return tabsiz;
+      }
+      try { fp.close(); } catch (java.io.IOException e) {}
+      return tabsiz;
+    }
+    /* find table size */
+    tabsiz = 0;
+    for (i = 0; i < NLEAP_SECONDS_SPACE; i++) {
+      if (leap_seconds[i] == 0)
+        break;
+      else
+        tabsiz++;
+    }
+    return tabsiz;
   }
 
   /**
@@ -2104,10 +2236,52 @@ public class SweDate
     double tjd_et = tjd_ut + getDeltaT(tjd_ut);
     return getUTCfromJDET(tjd_et, gregflag);
   }
+
+
+  /**
+  * Returns a LocalDateTime object to be used with DateTimeFormatters.
+  * E.g.:
+  * <pre>
+  * DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy/mm/dd-hh:mm:ss-a (HH:mm:ss'h')");
+
+  * System.out.println(new SweDate(2016, 5, 31, 0 + 9/60. + 53/3600.).getLocalDateTime().format(dtf));
+  * </pre>
+  * @return The java.time.LocalDateTime object for this SweDate object
+  */
+  public LocalDateTime getLocalDateTime() {
+    return getLocalDateTime(this);
+  }
+
+  /**
+  * Returns a LocalDateTime object to be used with DateTimeFormatters.
+  * E.g.:
+  * <pre>
+  * DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy/mm/dd-hh:mm:ss-a (HH:mm:ss'h')");
+
+  * SweDate sd = new SweDate();
+  * System.out.println(SweDate.getLocalDateTime(sd).format(dtf));
+  * </pre>
+  * @return The java.time.LocalDateTime object for the SweDate object
+  */
+  public static LocalDateTime getLocalDateTime(SweDate sd) {
+    double hour = sd.getHour();
+    double minute = ((hour % 1) * 60);
+    double second = ((minute % 1) * 60);
+    double nano = ((second % 1) * 1E6);
+
+    return LocalDateTime.of(sd.getYear(),
+        sd.getMonth(),
+        sd.getDay(),
+        (int)hour,
+        (int)minute,
+        (int)second,
+        (int)nano);
+  }
 } // end of class SweDate
 
 
 class IDate
+		implements java.io.Serializable
 		{
   public int year;
   public int month;

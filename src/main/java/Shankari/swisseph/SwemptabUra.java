@@ -77,6 +77,7 @@
 package Shankari.swisseph;
 
 class SwemptabUra
+		implements java.io.Serializable
 		{
   /*
   First date in file = 625296.50

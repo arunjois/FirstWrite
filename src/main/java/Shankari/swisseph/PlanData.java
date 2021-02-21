@@ -69,6 +69,7 @@
 package Shankari.swisseph;
 
 class PlanData
+		implements java.io.Serializable
 		{
   double x[]=new double[6]; /* position and speed vectors equatorial J2000 */
   double xreturn[]=new double[24]; /* return positions:

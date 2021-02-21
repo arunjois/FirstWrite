@@ -69,6 +69,7 @@
 package Shankari.swisseph;
 
 class SwephMosh
+		implements java.io.Serializable
 		{
 
   SwissLib sl=null;
@@ -687,11 +688,16 @@ class SwephMosh
                                  StringBuffer pname, IntObj fict_ifl,
                                  StringBuffer serr) {
     int i, iline, iplan, retc, ncpos;
+    FilePtr fp = null;
     String s, sp;
     int spIdx=0;
     String cpos[]=new String[20], serri="";
     boolean elem_found = false;
     double tt = 0;
+    /* -1, because file information is not saved, file is always closed */
+    try {
+      fp = sw.swi_fopen(-1, SweConst.SE_FICTFILE, swed.ephepath, serr);
+    } catch (SwissephException se) {
       /* file does not exist, use built-in bodies */
       if (ipl >= SweConst.SE_NFICT_ELEM) {
         if (serr != null) {
@@ -729,6 +735,227 @@ class SwephMosh
         pname.append(plan_fict_nam[ipl]);
       }
       return SweConst.OK;
+    }
+    /*
+     * find elements in file
+     */
+    iline = 0;
+    iplan = -1;
+    try {
+//    while (fgets(s, AS_MAXCH, fp) != null)
+      while ((s=fp.readLine()) != null) {
+        s=s.trim();
+//        iline++;
+//        spIdx = 0;
+//        while(s.charAt(spIdx) == ' ' || s.charAt(spIdx) == '\t')
+//          spIdx++;
+//        s=s.substring(spIdx);
+        sp = s;
+        spIdx=0;
+        char ch=s.charAt(spIdx);
+        if (ch == '#' || ch=='\r' || ch=='\n' || ch=='\0') {
+          continue;
+        }
+//    if ((sp = strchr(s, '#')) != NULL)
+//      *sp = '\0';
+        sp = null;
+        if ((spIdx = s.indexOf('#')) >= 0) {
+          s = s.substring(0,s.indexOf('#'));
+          sp = "";
+        }
+        ncpos = sl.swi_cutstr(s, ",", cpos, 20);
+        serri="error in file "+SweConst.SE_FICTFILE+", line "+
+              iline+":";
+        if (ncpos < 9) {
+          if (serr != null) {
+            serr.setLength(0);
+            serr.append(serri).append(" nine elements required");
+          }
+          return SweConst.ERR;
+        }
+        iplan++;
+        if (iplan != ipl) {
+          continue;
+        }
+        elem_found = true;
+        /* epoch of elements */
+        if (tjd0 != null) {
+          sp = cpos[0];
+//          for (i = 0; i < 5; i++)
+//       sp[i] = tolower(sp[i]);
+          sp=sp.length()<=5?sp.toLowerCase():
+                               sp.substring(0,5).toLowerCase()+sp.substring(5);
+          if (sp.startsWith("j2000")) {
+            tjd0.val = SwephData.J2000;
+          } else if (sp.startsWith("b1950")) {
+            tjd0.val = SwephData.B1950;
+          } else if (sp.startsWith("j1900")) {
+            tjd0.val = SwephData.J1900;
+          } else if (sp.charAt(0) == 'j' || sp.charAt(0) == 'b') {
+            if (serr != null) {
+              serr.setLength(0);
+              serr.append(serri).append(" invalid epoch");
+            }
+//          goto return_err;
+            fp.close(); return SweConst.ERR;
+          } else
+            tjd0.val = SwissLib.atof(sp);
+          tt = tjd - tjd0.val;
+        }
+        /* equinox */
+        if (tequ != null) {
+          sp = cpos[1];
+          spIdx=0;
+          while(sp.charAt(spIdx) == ' ' || sp.charAt(spIdx) == '\t')
+            spIdx++;
+//          for (i = 0; i < 5; i++)
+//       sp[i] = tolower(sp[i]);
+          sp=sp.substring(spIdx);
+          sp=sp.length()<5?sp.toLowerCase():
+                               sp.substring(0,5).toLowerCase()+sp.substring(5);
+          if (sp.startsWith("j2000")) {
+            tequ.val = SwephData.J2000;
+          } else if (sp.startsWith("b1950")) {
+            tequ.val = SwephData.B1950;
+          } else if (sp.startsWith("j1900")) {
+            tequ.val = SwephData.J1900;
+          } else if (sp.startsWith("jdate")) {
+            tequ.val = tjd;
+          } else if (sp.charAt(0) == 'j' || sp.charAt(0) == 'b') {
+            if (serr != null) {
+              serr.setLength(0);
+              serr.append(serri).append(" invalid equinox");
+            }
+//          goto return_err;
+            fp.close(); return SweConst.ERR;
+          } else {
+//        *tequ = atof(sp);
+            tequ.val = SwissLib.atof(sp);
+          }
+        }
+        /* mean anomaly t0 */
+        if (mano != null) {
+          retc = check_t_terms(tt, cpos[2], mano);
+          mano.val = sl.swe_degnorm(mano.val);
+          if (retc == SweConst.ERR) {
+            if (serr != null) {
+              serr.append(serri).append(" mean anomaly value invalid");
+            }
+//          goto return_err;
+            fp.close(); return SweConst.ERR;
+          }
+          /* if mean anomaly has t terms (which happens with fictitious
+           * planet Vulcan), we set
+           * epoch = tjd, so that no motion will be added anymore
+           * equinox = tjd */
+          if (retc == 1) {
+            tjd0.val = tjd;
+          }
+          mano.val *= SwissData.DEGTORAD;
+        }
+        /* semi-axis */
+        if (sema != null) {
+          retc = check_t_terms(tt, cpos[3], sema);
+          if (sema.val <= 0 || retc == SweConst.ERR) {
+            if (serr != null) {
+              serr.append(serri).append(" semi-axis value invalid");
+            }
+//          goto return_err;
+            fp.close(); return SweConst.ERR;
+          }
+        }
+        /* eccentricity */
+        if (ecce != null) {
+          retc = check_t_terms(tt, cpos[4], ecce);
+          if (ecce.val >= 1 || ecce.val < 0 || retc == SweConst.ERR) {
+            if (serr != null) {
+              serr.setLength(0);
+              serr.append(serri).append(" eccentricity invalid (no parabolic or hyperbolic or bits allowed)");
+            }
+//          goto return_err;
+            fp.close(); return SweConst.ERR;
+          }
+        }
+        /* perihelion argument */
+        if (parg != null) {
+          retc = check_t_terms(tt, cpos[5], parg);
+          parg.val = sl.swe_degnorm(parg.val);
+          if (retc == SweConst.ERR) {
+            if (serr != null) {
+              serr.setLength(0);
+              serr.append(serri).append(" perihelion argument value invalid");
+            }
+//          goto return_err;
+            fp.close(); return SweConst.ERR;
+          }
+          parg.val *= SwissData.DEGTORAD;
+        }
+        /* node */
+        if (node != null) {
+          retc = check_t_terms(tt, cpos[6], node);
+          node.val = sl.swe_degnorm(node.val);
+          if (retc == SweConst.ERR) {
+            if (serr != null) {
+              serr.setLength(0);
+              serr.append(serri).append(" node value invalid");
+            }
+//          goto return_err;
+            fp.close(); return SweConst.ERR;
+          }
+          node.val *= SwissData.DEGTORAD;
+        }
+        /* inclination */
+        if (incl != null) {
+          retc = check_t_terms(tt, cpos[7], incl);
+          incl.val = sl.swe_degnorm(incl.val);
+          if (retc == SweConst.ERR) {
+            if (serr != null) {
+              serr.setLength(0);
+              serr.append(serri).append(" inclination value invalid");
+            }
+//          goto return_err;
+            fp.close(); return SweConst.ERR;
+          }
+          incl.val *= SwissData.DEGTORAD;
+        }
+        /* planet name */
+        if (pname != null) {
+          sp = cpos[8];
+          spIdx=0;
+          while(sp.charAt(spIdx) == ' ' || sp.charAt(spIdx) == '\t')
+            spIdx++;
+          sp=sp.substring(spIdx);
+//      swi_right_trim(sp);
+          sp=sp.trim();
+          pname.setLength(0); pname.append(sp);
+        }
+        /* geocentric */
+        if (fict_ifl != null && ncpos > 9) {
+//          for (sp = cpos[9]; *sp != '\0'; sp++)
+//            *sp = tolower(*sp);
+          sp = sp.substring(0,SMath.min(sp.length(),spIdx+9)) +
+               sp.substring(SMath.min(sp.length(),spIdx+9)).toLowerCase();
+//          if (strstr(cpos[9], "geo") != NULL)
+//            fict_ifl.val |= FICT_GEO;
+          if (cpos[9].indexOf("geo") >= 0) {
+            fict_ifl.val |= FICT_GEO;
+          }
+        }
+        break;
+      }
+      if (!elem_found) {
+        if (serr != null) {
+          serr.append(serri).append(" elements for planet ").append(ipl).append(" not found");
+        }
+//      goto return_err;
+        fp.close(); return SweConst.ERR;
+      }
+      fp.close();
+      return SweConst.OK;
+    } catch (java.io.IOException e) {
+      if (fp!=null) { try { fp.close(); } catch (java.io.IOException ie) { } }
+    }
+    return SweConst.ERR;
   }
 
   private int check_t_terms(double t, String sinp, DblObj doutp) {

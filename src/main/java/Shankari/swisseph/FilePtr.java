@@ -11,11 +11,6 @@
    in this port in any way.
 
    Thomas Mack, mack@ifis.cs.tu-bs.de, 23rd of April 2001
-
-   The code base for the use of the java.nio package is from Aaron Hunter,
-   who does not impose any additional license restrictions.
-
-   Thomas Mack, mack@ifis.cs.tu-bs.de, 25th of June 2007
 */
 /* Copyright (C) 1997 - 2008 Astrodienst AG, Switzerland.  All rights reserved.
 
@@ -74,11 +69,6 @@ package Shankari.swisseph;
 
 import java.io.*;
 import java.net.*;
-import java.nio.ByteOrder;
-import java.nio.CharBuffer;
-import java.nio.MappedByteBuffer;
-import java.nio.BufferOverflowException;
-import java.nio.channels.FileChannel;
 
 
 /**
@@ -98,9 +88,6 @@ public class FilePtr
   private static final int MAX_FAILURES = 100;
 
   transient RandomAccessFile fp;
-  transient FileChannel fc;
-  private transient MappedByteBuffer mbb = null;
-  private transient CharBuffer cb = null;
   transient Socket sk;
   transient InputStream is;
   transient BufferedOutputStream os;
@@ -128,6 +115,13 @@ public class FilePtr
   * directly, you should use the BufferedInputStream etc. -classes, as
   * they are MUCH faster than the RandomAccessFile class that is used
   * here.
+  * @param fp (optional) RandomAccessFile, if already open and available
+  * @param sk (optional) Socket, if already open and available
+  * @param is (optional) InputStream, if already opened
+  * @param os (optional) The OutputStream to write to for HTTP-access
+  * @param fnamp (optional) The url for HTTP-access
+  * @param fileLength (optional) The file length of an opened data file
+  * @param bufsize Size of input-buffer to be used
   */
   public FilePtr(RandomAccessFile fp,
                  Socket sk,
@@ -136,7 +130,7 @@ public class FilePtr
                  String fnamp,
                  long fileLength,
                  int bufsize)
-                 throws IOException {
+	throws IOException {
     this.fp = fp;
     this.sk = sk;
     this.is = is;
@@ -148,7 +142,6 @@ public class FilePtr
     data = new byte[BUFSIZE];
     inbuf = new byte[BUFSIZE];
     if (useHTTP && fp == null) { // RandomAccessFile, try file access via http:
-      fc = null;
       try {
         URL u = new URL(fnamp);
         host = u.getHost();
@@ -157,20 +150,11 @@ public class FilePtr
       } catch ( MalformedURLException me) {
         throw new IOException("Malformed URL '"+fnamp+"'");
       }
-    } else {
-      fc = fp.getChannel();
-      mbb = fc.map(FileChannel.MapMode.READ_ONLY, 0, length());
-      cb = CharBuffer.allocate( STRING_BUFFER_SIZE );
     }
   }
 
 
   public void setBigendian(boolean bigendian) {
-    if (fc != null) {
-      mbb.order(bigendian?ByteOrder.BIG_ENDIAN:ByteOrder.LITTLE_ENDIAN);
-    } else {
-      this.bigendian = bigendian;
-    }
     this.bigendian = bigendian;
   }
 
@@ -183,10 +167,6 @@ public class FilePtr
   * byte could be read.
   */
   public byte readByte() throws IOException, EOFException {
-    if (fc != null) {
-      return mbb.get();
-    }
-
     if (startIdx<0 || fpos<startIdx || fpos>endIdx) {
       readToBuffer();
     }
@@ -215,10 +195,6 @@ public class FilePtr
   * 2 bytes could be read completely.
   */
   public short readShort() throws IOException, EOFException {
-    if (fc != null) {
-      return mbb.getShort();
-    }
-
     if (bigendian) {
       return (short)((readByte()<<8)+readUnsignedByte());
     }
@@ -234,10 +210,6 @@ public class FilePtr
   * 4 bytes could be read completely.
   */
   public int readInt() throws IOException, EOFException {
-    if (fc != null) {
-      return mbb.getInt();
-    }
-
     if (bigendian) {
       return (((int)readByte())<<24)+
              (((int)readUnsignedByte())<<16)+
@@ -259,10 +231,6 @@ public class FilePtr
   * 8 bytes could be read completely.
   */
   public double readDouble() throws IOException, EOFException {
-    if (fc != null) {
-      return mbb.getDouble();
-    }
-
     long ldb = (bigendian?
                    (
                        (((long)readUnsignedByte())<<56)+
@@ -301,30 +269,6 @@ public class FilePtr
   * character (byte) could be read.
   */
   public String readLine() throws IOException, EOFException {
-    if (fc != null) {
-      cb.clear();
-
-      char ch;
-      while (true) {
-        try {
-          while ((ch=(char)readUnsignedByte() ) != '\n') {
-            cb.put( ch );
-          }
-          cb.put( ch );
-          break;
-        } catch (BufferOverflowException boe) {
-System.err.println("Re-allocating CharBuffer to size of " + (2 * cb.capacity()) + " characters.");
-          cb.flip();
-          String lineStart = cb.toString();
-          cb = CharBuffer.allocate(cb.capacity() * 2);
-          cb.clear();
-          cb.put(lineStart);
-        }
-      }
-      cb.flip();
-      return cb.toString();
-    }
-
     StringBuffer sout = new StringBuffer(200);
     try {
       char ch;
@@ -375,10 +319,6 @@ System.err.println("Re-allocating CharBuffer to size of " + (2 * cb.capacity()) 
   * @return the current position of the file pointer.
   */
   public long getFilePointer() {
-    if (fc != null) {
-      return mbb.position();
-    }
-
     return fpos;
   }
 
@@ -388,10 +328,6 @@ System.err.println("Re-allocating CharBuffer to size of " + (2 * cb.capacity()) 
   * @throws IOException if an I/O error occurs.
   */
   public long length() throws IOException {
-    if (fc != null) {
-      return fc.size();
-    }
-
     if (fp != null && savedLength < 0) { savedLength = fp.length(); }
     if (fp != null || savedLength >= 0 || !useHTTP) {
       return savedLength;
@@ -442,10 +378,6 @@ System.err.println("Re-allocating CharBuffer to size of " + (2 * cb.capacity()) 
   * @param pos the new position in the file. The position is seen zero based.
   */
   public void seek(long pos) {
-    if (fc != null) {
-      mbb.position((int)pos);
-    }
-
     fpos = pos;
   }
 
@@ -522,6 +454,7 @@ System.err.println("Re-allocating CharBuffer to size of " + (2 * cb.capacity()) 
       endIdx = fpos+cnt-1;
       return;
     }
+
     if (fpos >= length()) {
       throw new EOFException("Filepointer position " + fpos + " exceeds file " +
                              "length by " + (fpos-length()+1) + " byte(s).");

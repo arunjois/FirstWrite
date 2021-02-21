@@ -69,6 +69,7 @@
 package Shankari.swisseph;
 
 class GenConst
+		implements java.io.Serializable
 		{
  double clight,
         aunit,

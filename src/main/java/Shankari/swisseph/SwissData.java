@@ -69,6 +69,7 @@
 package Shankari.swisseph;
 
 public class SwissData
+		implements java.io.Serializable
 		{
 
   /**
@@ -80,7 +81,7 @@ public class SwissData
   */
 //  public String ODEGREE_CHAR=""+'\u00b0'; // Unicode degree character 176
 //                                          // Identical in most ISO-8859 sets
-  public String ODEGREE_STRING="°";	/* degree as string, utf8 encoding */
+  public String ODEGREE_STRING="��";	/* degree as string, utf8 encoding */
 
 
   public static final String ayanamsa_name[] = {
@@ -182,7 +183,10 @@ public class SwissData
 //////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
   boolean ephe_path_is_set=false;	/* ephe_path_is_set = FALSE */
+  boolean jpl_file_is_open=false;	/* jpl_file_is_open = FALSE */
+  FilePtr fixfp=null;			/* fixfp, fixed stars file pointer */
   String ephepath = SweConst.SE_EPHE_PATH;	/* ephepath, ephemeris path */
+  String jplfnam = SweConst.SE_FNAME_DFT;	/* jplfnam, JPL file name, default */
   int jpldenum = 0;			/* jpldenum */
   double eop_tjd_beg;
   double eop_tjd_beg_horizons;

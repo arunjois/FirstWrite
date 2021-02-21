@@ -55,6 +55,7 @@
 package Shankari.swisseph;
 
 public class Swenut2000aNls
+		implements java.io.Serializable
 		{
   static final int nls[] = {
   0, 0, 0, 0, 1,

@@ -77,6 +77,7 @@
 package Shankari.swisseph;
 
 class SwemptabEar
+		implements java.io.Serializable
 		{
   /*
   First date in file = 1228000.50

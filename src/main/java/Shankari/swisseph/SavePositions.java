@@ -69,6 +69,7 @@
 package Shankari.swisseph;
 
 class SavePositions
+		implements java.io.Serializable
 		{
   int ipl;
   double tsave=0.;

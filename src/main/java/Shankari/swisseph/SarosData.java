@@ -69,6 +69,7 @@
 package Shankari.swisseph;
 
 class SarosData
+		implements java.io.Serializable
 		{
   int series_no;
   double tstart;

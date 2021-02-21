@@ -69,6 +69,7 @@
 package Shankari.swisseph;
 
 class Nut
+		implements java.io.Serializable
 		{
   /* nutation */
   double tnut;

@@ -1,3 +1,8 @@
+
+
+
+
+
 /*
    This is a port of the Swiss Ephemeris Free Edition, Version 2.00.00
    of Astrodienst AG, Switzerland from the original C Code to Java. For
@@ -76,6 +81,9 @@
 */
 package Shankari.swisseph;
 
+import java.util.*;
+import java.net.*;
+import java.io.*;
 
 /**
 * This class is the basic class for planetary calculations.<p>
@@ -88,10 +96,12 @@ package Shankari.swisseph;
 * there is directly valid for this port to Java as well.</B></I>
 */
 public class SwissEph
+		implements java.io.Serializable
 		{
 
   SwissData swed;
   SwephMosh smosh;
+  SwephJPL sj;
   SwissLib sl;
   Swecl sc=null;
   Swemmoon sm;
@@ -123,14 +133,13 @@ public class SwissEph
   * ATTENTION: This constructor sets a global parameter used in
   * calculation of delta T when parameter path is not null.
   * @param path The search path for the Swiss Ephemeris
+  * and JPL
   * data files. If null or empty, a default path will be used.
-  * You will have to quote ':', ';' and '\' characters, so a
-  * path like <code>&quot;C:\swiss\ephe&quot;</code> has to be written as
-  * <code>&quot;C\\:\\swiss\\ephe&quot;</code>, as any '\' will be
-  * evaluated twice: the first time by the Java compiler, and the second
-  * time by the program itself. You can specify multiple path elements
-  * separated by the (unquoted) ':' or ';' character. See swe_set_ephe_path()
-  * for more information.
+  * Additionally to the '\' character, you will have to quote ':' and ';',
+  * so a path like <code>&quot;C:\swiss\ephe&quot;</code> has to be written
+  * as <code>&quot;C\\:\\swiss\\ephe&quot;</code>.
+  * You can specify multiple path elements separated by the (unquoted) ':' or
+  * ';' character. See swe_set_ephe_path() for more information.
   * @see SweConst#SE_EPHE_PATH
   * @see SwissEph#swe_set_ephe_path(java.lang.String)
   */
@@ -142,15 +151,19 @@ public class SwissEph
     sl       = new SwissLib(this.swed);
     sm       = new Swemmoon(this.swed, this.sl);
     smosh    = new SwephMosh(this.sl, this, this.swed);
+    sj       = new SwephJPL(this, this.swed, this.sl);
 
     swed.ephe_path_is_set=false;
+    swed.jpl_file_is_open=false;
+    swed.fixfp=null;
     swed.ephepath=SweConst.SE_EPHE_PATH;
+    swed.jplfnam=SweConst.SE_FNAME_DFT;
     swed.geopos_is_set=false;
     swed.ayana_is_set=false;
 // JAVA only:
-    if (path != null) {
+//    if (path != null) {
       swe_set_ephe_path(path);
-    }
+//    }
   }
 //////////////////////////////////////////////////////////////////////////////
 // End of Constructors ///////////////////////////////////////////////////////
@@ -165,6 +178,7 @@ public class SwissEph
 
   /**
   * This sets the buffer size for access to Swiss Ephemeris
+  * or JPL
   * data files, if you specify an http-URL in swe_set_ephe_path() or via
   * the SwissEph constructor. The buffer size determines, how many bytes
   * will get read on one single HTTP request. Increased buffer size will
@@ -313,9 +327,24 @@ public class SwissEph
   // This is the new recommended interface for planetary calculations.
   // It should be rewritten to be used for fixstars as well.
   /**
+  * This method will probably be deprecated some time in future or change
+  * parameters. Use swe_calc() or swe_calc_ut() instead.
   * <b>ATTENTION: This method possibly (re-)sets a global parameter used
   * in calculation of delta T. See SweDate.setGlobalTidalAcc(double).</b>
-  * @see SweDate#setGlobalTidalAcc(double)
+  * @param jdET The Julian Day number in ET (UT + deltaT).
+  * @param ipl The body to be calculated. See
+  * <A HREF="SweConst.html">SweConst</A> for a list of bodies
+  * @param iflag A flag that contains detailed specification on how the body
+  * is to be computed. See <A HREF="SweConst.html">SweConst</A>
+  * for a list of valid flags (SEFLG_*).
+  * @param xx A double[6] in which the result is returned. See above for more
+  * details.
+  * @return iflag; iflag MAY have changed from input parameter, when the
+  * calculation had used different flags, e.g.: when specified SweConst.SEFLG_SWIEPH,
+  * but the ephemeris data files wheren't available, the calculation automatically
+  * switches to Moshier calculations (SweConst.SEFLG_MOSEPH) and changes iflag.
+  * @see #swe_calc_ut(double, int, int, double[], java.lang.StringBuffer)
+  * @see #swe_calc(double, int, int, double[], java.lang.StringBuffer)
   */
   public int calc(double jdET, int ipl, int iflag, double xx[])
                   throws SwissephException {
@@ -515,7 +544,16 @@ public class SwissEph
       swed.nut.clearData();
       swed.nut2000.clearData();
       swed.nutv.clearData();
-    } catch (Exception e) {
+      /* close JPL file */
+      sj.swi_close_jpl_file();
+      swed.jpl_file_is_open=false;
+      swed.jpldenum = 0;
+      /* close fixed stars */
+      if (swed.fixfp!=null) {
+        swed.fixfp.close();
+        swed.fixfp=null;
+      }
+    } catch (java.io.IOException e) {
 // NBT
     }
   }
@@ -526,6 +564,15 @@ public class SwissEph
   public void swe_close() {
     int i;
     /* close SWISSEPH files */
+    for (i = 0; i < SwephData.SEI_NEPHFILES; i ++) {
+      if (swed.fidat[i].fptr != null) {
+        try {
+          swed.fidat[i].fptr.close();
+        } catch (java.io.IOException e) {
+        }
+      }
+      swed.fidat[i].clearData();
+    }
     free_planets();
     swed.oec.clearData();
     swed.oec2000.clearData();
@@ -533,10 +580,20 @@ public class SwissEph
     swed.nut2000.clearData();
     swed.nutv.clearData();
     // memset((void *) &swed.astro_models, SEI_NMODELS, sizeof(int32));
-    for(int a = 0; a < SwephData.SEI_NMODELS; a++) {
-      swed.astro_models[a] = 0;
-    }
+    Arrays.fill(swed.astro_models, 0);
+    /* close JPL file */
+    sj.swi_close_jpl_file();
+    swed.jpl_file_is_open = false;
     swed.jpldenum = 0;
+    /* close fixed stars */
+    if (swed.fixfp != null) {
+      try {
+        swed.fixfp.close();
+      } catch (java.io.IOException e) {
+// NBT
+      }
+      swed.fixfp = null;
+    }
     SweDate.swe_set_tid_acc(SweConst.SE_TIDAL_AUTOMATIC);
     swed.geopos_is_set = false;
     swed.ayana_is_set = false;
@@ -571,15 +628,17 @@ public class SwissEph
   * <b>ATTENTION: This method possibly (re-)sets a global parameter used
   * in calculation of delta T. See SweDate.setGlobalTidalAcc(double).</b>
   * @param path The search path for the Swiss Ephemeris
+  * and JPL
   * data files. If null or empty, a default path will be used.
-  * You will have to quote ':', ';' and '\' characters, so a
-  * path like <code>&quot;C:\swiss\ephe&quot;</code> has to be written as
-  * <code>&quot;C\\:\\swiss\\ephe&quot;</code>, as any '\' will be
-  * evaluated twice: the first time by the Java compiler, and the second
-  * time by the program itself.
+  * Additionally to the '\' character, you will have to quote ':' and ';',
+  * so a path like <code>&quot;C:\swiss\ephe&quot;</code> has to be written
+  * as <code>&quot;C\\:\\swiss\\ephe&quot;</code>.
+  * You can specify multiple path elements separated by the (unquoted) ':' or
+  * ';' character.
   * @see SweDate#setGlobalTidalAcc(double)
   */
   public void swe_set_ephe_path(String path) {
+if(path == null) return;
     int i, iflag;
     String s="";
     double xx[] = new double[6];
@@ -602,11 +661,154 @@ public class SwissEph
 // JAVA: Skipping this code in the Java version - it does not do anything
 // meaningful anyway...
     swed.ephepath=s;
+    /* try to open lunar ephemeris, in order to get DE number and set
+     * tidal acceleration of the Moon */
+    iflag = SweConst.SEFLG_SWIEPH|SweConst.SEFLG_J2000|SweConst.SEFLG_TRUEPOS|SweConst.SEFLG_ICRS;
+    swe_calc(SwephData.J2000, SweConst.SE_MOON, iflag, xx, null);
+    if (swed.fidat[SwephData.SEI_FILE_MOON].fptr != null) {
+      SweDate.swi_set_tid_acc(0, 0, swed.fidat[SwephData.SEI_FILE_MOON].sweph_denum);
+    }
   }
 
   void load_dpsi_deps() {
+    FilePtr fp;
+    String s;
+    String cpos[] = new String[20];
+    int n = 0, np, iyear, mjd = 0, mjdsv = 0;
+    double dpsi, deps, TJDOFS = 2400000.5;
+    if (swed.eop_dpsi_loaded > 0) 
+      return;
+    try {
+      fp = swi_fopen(-1, SwissLib.DPSI_DEPS_IAU1980_FILE_EOPC04, swed.ephepath, null);
+    } catch (SwissephException se) {
+      swed.eop_dpsi_loaded = SweConst.ERR;
+      return;
+    }
+//  if ((swed.dpsi = (double *) calloc((size_t) SWE_DATA_DPSI_DEPS, sizeof(double))) == NULL) {
+//    swed.eop_dpsi_loaded = ERR;
+//    return;
+//  }
+    swed.dpsi = new double[SwephData.SWE_DATA_DPSI_DEPS];
+//  if ((swed.deps = (double *) calloc((size_t) SWE_DATA_DPSI_DEPS, sizeof(double))) == NULL) {
+//    swed.eop_dpsi_loaded = ERR;
+//    return;
+//  }
+    swed.deps = new double[SwephData.SWE_DATA_DPSI_DEPS];
+    swed.eop_tjd_beg_horizons = SwissLib.DPSI_DEPS_IAU1980_TJD0_HORIZONS;
+    try {
+      while ((s = fp.readLine())!= null) {
+        np = sl.swi_cutstr(s, " ", cpos, 16);
+        if ((iyear = SwissLib.atoi(cpos[0])) == 0) 
+          continue;
+        mjd = SwissLib.atoi(cpos[3]);
+        /* is file in one-day steps? */
+        if (mjdsv > 0 && mjd - mjdsv != 1) {
+          /* we cannot return error but we note it as follows: */
+          swed.eop_dpsi_loaded = -2;
+          fp.close();
+          return;
+        }
+        if (n == 0)
+          swed.eop_tjd_beg = mjd + TJDOFS;
+        swed.dpsi[n] = SwissLib.atof(cpos[8]);
+        swed.deps[n] = SwissLib.atof(cpos[9]);
+  /*    fprintf(stderr, "tjd=%f, dpsi=%f, deps=%f\n", mjd + 2400000.5, swed.dpsi[n] * 1000, swed.deps[n] * 1000);exit(0);*/
+        n++;
+        mjdsv = mjd;
+      }
+      swed.eop_tjd_end = mjd + TJDOFS;
+      swed.eop_dpsi_loaded = 1;
+      fp.close();
+      /* file finals.all may have some more data, and especially estimations 
+       * for the near future */
+      try {
+        fp = swi_fopen(-1, SwissLib.DPSI_DEPS_IAU1980_FILE_FINALS, swed.ephepath, null);
+      } catch (SwissephException se) {
+        return; /* return without error as existence of file is not mandatory */
+      }
+      while ((s = fp.readLine())!= null) {
+        mjd = SwissLib.atoi(s.substring(7));
+        if (mjd + TJDOFS <= swed.eop_tjd_end)
+          continue;
+        if (n >= SwephData.SWE_DATA_DPSI_DEPS)
+          return;
+        /* are data in one-day steps? */
+        if (mjdsv > 0 && mjd - mjdsv != 1) {
+          /* no error, as we do have data; however, if this file is usefull,
+           * then swed.eop_dpsi_loaded will be set to 2 */
+          swed.eop_dpsi_loaded = -3;
+          fp.close();
+          return;
+        }
+        /* dpsi, deps Bulletin B */
+        dpsi = SwissLib.atof(s + 168);
+        deps = SwissLib.atof(s + 178);
+        if (dpsi == 0) {
+          /* try dpsi, deps Bulletin A */
+          dpsi = SwissLib.atof(s + 99);
+          deps = SwissLib.atof(s + 118);
+        }
+        if (dpsi == 0) {
+          swed.eop_dpsi_loaded = 2;
+          /*printf("dpsi from %f to %f \n", swed.eop_tjd_beg, swed.eop_tjd_end);*/
+          fp.close();
+          return;
+        }
+        swed.eop_tjd_end = mjd + TJDOFS;
+        swed.dpsi[n] = dpsi / 1000.0;
+        swed.deps[n] = deps / 1000.0;
+        /*fprintf(stderr, "tjd=%f, dpsi=%f, deps=%f\n", mjd + 2400000.5, swed.dpsi[n] * 1000, swed.deps[n] * 1000);*/
+        n++;
+        mjdsv = mjd;
+      }
+    } catch (IOException ioe) {
+    }
+    swed.eop_dpsi_loaded = 2;
+    try {
+      fp.close();
+    } catch (IOException ioe) {
+    }
   }
 
+  /* sets jpl file name.
+   * also calls swe_close(). this makes sure that swe_calc()
+   * won't return planet positions previously computed from other
+   * ephemerides
+   */
+  /**
+  * This sets the name of the file that contains the ephemeris data
+  * for the use with the JPL ephemeris. It defaults to the string
+  * "de406.eph" defined in SweConst.SE_FNAME_DFT. If a path is given
+  * in fname, the path will be cut off, as the path is given by
+  * swe_set_ephe_path(...).
+  * @param fname Name of the JPL data file
+  * @see SweConst#SE_FNAME_DFT
+  * @see SwissEph#swe_set_ephe_path(java.lang.String)
+  */
+  public void swe_set_jpl_file(String fname) {
+    int retc;
+    double ss[] = new double[3];
+    /* close all open files and delete all planetary data */
+    swe_close();
+    /* if path is contained in fnam, it is filled into the path variable */
+    if (fname.indexOf(SwissData.DIR_GLUE)>=0) {
+      fname=fname.substring(fname.lastIndexOf(SwissData.DIR_GLUE));
+    }
+    if (fname.length() >= SwissData.AS_MAXCH) {
+      fname=fname.substring(0,SwissData.AS_MAXCH);
+    }
+    swed.jplfnam=fname;
+    /* open ephemeris, if still closed */
+    if (!swed.jpl_file_is_open) {
+      retc = open_jpl_file(ss, swed.jplfnam, swed.ephepath, null);
+      if (retc == SweConst.OK) {
+        if (swed.jpldenum >= 403) {
+	  /*if (INCLUDE_CODE_FOR_DPSI_DEPS_IAU1980) */
+	  load_dpsi_deps();
+        }
+      }
+    }
+  }
 
   /**
   * This sets the ayanamsha mode for sidereal planet calculations. If you
@@ -715,6 +917,8 @@ public class SwissEph
       sip.sid_mode &= ~SweConst.SE_SIDBIT_SSY_PLANE;
       sip.sid_mode |= SweConst.SE_SIDBIT_ECL_T0;
     }
+    if (sid_mode == SweConst.SE_SIDM_TRUE_CITRA || sid_mode == SweConst.SE_SIDM_TRUE_REVATI) 
+      sip.sid_mode &= ~(SweConst.SE_SIDBIT_ECL_T0 | SweConst.SE_SIDBIT_SSY_PLANE);
     if (sid_mode >= SwissData.SE_NSIDM_PREDEF && sid_mode != SweConst.SE_SIDM_USER)
       sip.sid_mode = sid_mode = SweConst.SE_SIDM_FAGAN_BRADLEY;
     swed.ayana_is_set = true;
@@ -749,6 +953,22 @@ public class SwissEph
     if (!swed.ayana_is_set) {
       swe_set_sid_mode(SweConst.SE_SIDM_FAGAN_BRADLEY, 0, 0);
     }
+    if (sip.sid_mode == SweConst.SE_SIDM_TRUE_CITRA) {
+      star.append("Spica"); /* Citra */
+      swe_fixstar(star, tjd_et, SweConst.SEFLG_NONUT, x, null);
+      return sl.swe_degnorm(x[0] - 180);
+    }
+    if (sip.sid_mode == SweConst.SE_SIDM_TRUE_REVATI) {
+      star.append(",zePsc"); /* Revati */
+      swe_fixstar(star, tjd_et, SweConst.SEFLG_NONUT, x, null);
+      return sl.swe_degnorm(x[0]);
+      /*return swe_degnorm(x[0] - 359.83333333334);*/
+    }
+    if (sip.sid_mode == SweConst.SE_SIDM_TRUE_PUSHYA) {
+      star.append(",deCnc"); /* Pushya = Asellus Australis */
+      swe_fixstar(star, tjd_et, SweConst.SEFLG_NONUT, x, null);
+      return sl.swe_degnorm(x[0] - 106);
+    }
     /* vernal point (tjd), cartesian */
     x[0] = 1;
     x[1] = x[2] = 0;
@@ -780,6 +1000,285 @@ public class SwissEph
   */
   public double swe_get_ayanamsa_ut(double tjd_ut) {
     return swe_get_ayanamsa(tjd_ut + SweDate.getDeltaT(tjd_ut));
+  }
+
+  /**********************************************************
+   * get fixstar positions
+   * parameters:
+   * star         name of star or line number in star file
+   *              (start from 1, don't count comment).
+   *              If no error occurs, the name of the star is returned
+   *              in the format trad_name, nomeclat_name
+   *
+   * tjd          absolute julian day
+   * iflag        s. swecalc(); speed bit does not function
+   * x            pointer for returning the ecliptic coordinates
+   * serr         error return string
+  **********************************************************/
+  /**
+  * Computes fixed stars. This method is identical to swe_fixstar_ut() with
+  * the one exception that the time has to be given in ET (Ephemeris Time or
+  * Dynamical Time instead of Universal Time UT). You would get ET by adding
+  * deltaT to the UT, e.g.,
+  * <CODE>tjd_et&nbsp;+&nbsp;SweDate.getDeltaT(tjd_et)</CODE>.<P>
+  * See swe_fixstar_ut(...) for missing information.
+  * @see #swe_fixstar_ut(java.lang.StringBuffer, double, int, double[], java.lang.StringBuffer)
+  */
+  /**
+  * Computes fixed stars. This method is identical to swe_fixstar_ut() with
+  * the one exception that the time has to be given in ET (Ephemeris Time or
+  * Dynamical Time instead of Universal Time UT). You would get ET by adding
+  * deltaT to the UT, e.g.,
+  * <CODE>tjd_et&nbsp;+&nbsp;SweDate.getDeltaT(tjd_et)</CODE>.<P>
+  * The fixed stars are defined in the file sefstars.txt and the star
+  * parameter must refer to any entry in that file. The entries in that file
+  * start with <I>traditional_name&nbsp;,nomenclature_name,...</I>, e.g.,
+  * "<CODE>Alpheratz&nbsp;&nbsp;&nbsp;&nbsp;,alAnd,</CODE>"[...].
+  * @param star Actually, it is an input and an output parameter at the same
+  * time. So it is not possible to define it as a String, but rather as a
+  * StringBuffer. On input it defines the star to be calculated and can be
+  * in three forms:<BR>
+  * - as a positive integer number meaning the star in the file sefstars.txt
+  * that is given on the line number of the given number, without counting
+  * any comment lines beginning with #.<BR>
+  * - as a traditional name case insensitively compared to the first name
+  * on every line in sefstars.txt.<BR>
+  * - as a nomenclature prefixed by a comma. This name is compared in a case
+  * preserving manner to the nomenclature name on every line in
+  * sefstars.txt.<BR>
+  * On Output it returns the complete name (traditional plus nomenclature
+  * name), e.g. "<CODE>Alpheratz,alAnd</CODE>".<br>
+  * <b>ATTENTION: This method possibly (re-)sets a global parameter used
+  * in calculation of delta T. See SweDate.setGlobalTidalAcc(double).</b>
+  * @param tjd The Julian Day in ET
+  * @param iflag Any of the SweConst.SEFLG_* flags
+  * @param xx A double[6] used as output parameter only. This returns
+  * longitude, latitude and the distance (in AU) of the fixed stars, but
+  * it does <B>not</B> return any speed values in xx[3] to xx[5] as it does
+  * in swe_calc() / swe_calc_ut(), even if you specify SweConst.SEFLG_SPEED
+  * in the flags parameter!
+  * @param serr A StringBuffer containing a warning or error message, if
+  * something fails.
+  * @return iflag or SweConst.ERR (-1); iflag MAY have changed from input
+  * parameter!
+  * @see #swe_fixstar(java.lang.StringBuffer, double, int, double[], java.lang.StringBuffer)
+  * @see SweDate#setGlobalTidalAcc(double)
+  */
+  public int swe_fixstar(StringBuffer star, double tjd, int iflag, double xx[],
+                         StringBuffer serr) {
+    int i;
+//    int cmplen;
+// Missing parameters are in "boolean readFixstarParameters(...)" and "int swe_fixstar_found(...)"!
+    int epheflag, iflgsave;
+    iflag |= SweConst.SEFLG_SPEED; /* we need this in order to work correctly */
+    iflgsave = iflag;
+
+    if (serr != null) {
+      serr.setLength(0);
+    }
+    iflag = plaus_iflag(iflag, -1, tjd, serr);
+    /* JPL Horizons is only reproduced with SEFLG_JPLEPH */
+    if (((iflag & SweConst.SEFLG_SIDEREAL)!=0) && !swed.ayana_is_set) {
+      swe_set_sid_mode(SweConst.SE_SIDM_FAGAN_BRADLEY, 0, 0);
+    }
+    epheflag = iflag & SweConst.SEFLG_EPHMASK;
+    /******************************************
+     * obliquity of ecliptic 2000 and of date *
+     ******************************************/
+    swi_check_ecliptic(tjd, iflag);
+    /******************************************
+     * nutation                               *
+     ******************************************/
+    swi_check_nutation(tjd, iflag);
+    String[] par = readFixstarParameters(star, serr);
+    if (par != null) {
+      return swe_fixstar_found(serr,par[1],star,Integer.parseInt(par[0]),tjd,iflag,iflgsave,epheflag,xx);
+    }
+    return swe_fixstar_error(xx,SweConst.ERR);
+  }
+
+String slast_stardata;
+String slast_starname;
+  // Reads the line with the fixstar parameters and returns the
+  // corresponding line number as a String in String[0] and the
+  // line itself in String[1].
+  protected String[] readFixstarParameters(StringBuffer star, StringBuffer serr) {
+    String sstar=null;
+    int star_nr = 0;
+    String s  ; //, sp;
+    int fline = 0;
+    int line = 0;
+    boolean isnomclat = false;
+
+
+    sstar=star.toString().substring(0,
+                                SMath.min(star.length(),SweConst.SE_MAX_STNAME));
+    if (sstar.length()>0) {
+      if (sstar.charAt(0) == ',') {
+        isnomclat = true;
+      } else if (Character.isDigit(sstar.charAt(0))) {
+// Use SwissLib.atoi(...) to allow for nonsense input data like 27abc - necessary???
+        star_nr = Integer.parseInt(sstar);
+      } else {
+        /* traditional name of star to lower case */
+        if (sstar.indexOf(',')>=0) {
+           sstar=sstar.substring(0,sstar.indexOf(','));
+        }
+        sstar=sstar.toLowerCase();
+      }
+      sstar=sstar.trim();	// trimming left side only in original source code?
+    }
+    if (sstar.length() == 0) {
+      if (serr != null) {
+        serr.setLength(0);
+        serr.append("swe_fixstar(): star name empty");
+      }
+      return null;
+    }
+    /* star elements from last call: */
+    if (slast_stardata != null && slast_starname.equals(sstar)) {
+      s = slast_stardata;
+//     goto found;
+      return new String[] { ""+fline, s };
+    }
+    /******************************************************
+     * Star file
+     * close to the beginning, a few stars selected by Astrodienst.
+     * These can be accessed by giving their number instead of a name.
+     * All other stars can be accessed by name.
+     * Comment lines start with # and are ignored.
+     ******************************************************/
+    if (swed.fixfp == null) {
+      int swErrorType = SwissephException.UNSPECIFIED_FILE_ERROR;
+      try {
+        // May throw SwissephException:
+        swed.fixfp = swi_fopen(SwephData.SEI_FILE_FIXSTAR, SweConst.SE_STARFILE, swed.ephepath, serr);
+      } catch (SwissephException se) {
+        if (serr != null) {
+          serr.setLength(0);
+          serr.append(se.getMessage());
+          swErrorType = se.getType();
+        }
+        swed.is_old_starfile = true;
+        try {
+          // May throw SwissephException:
+          swed.fixfp = swi_fopen(SwephData.SEI_FILE_FIXSTAR, SweConst.SE_STARFILE_OLD,
+                                    swed.ephepath, null);
+        } catch (SwissephException se2) {
+          if (serr != null) {
+            serr.append(se2.getMessage() == null ? "" : se2.getMessage());
+            swErrorType = se2.getType();
+          }
+	  swed.is_old_starfile = false;
+	  /* no fixed star file available. If Spica is called, we provide it
+	   * even without a star file, because Spica is required for the
+	   * Ayanamsha SE_SIDM_TRUE_CITRA */
+          if (star.toString().startsWith("Spica")) {
+	    s = "Spica,alVir,ICRS,13,25,11.5793,-11,09,40.759,-42.50,-31.73,1.0,12.44,1.04,-10,3672";
+	    sstar = "spica";
+//	    goto found;
+            return new String[] { "-1", s };
+	  }
+          return null;
+//       retc = ERR;
+//       goto return_err;
+        }
+      }
+    }
+    swed.fixfp.seek(0);
+    try {
+      while ((s=swed.fixfp.readLine())!=null) {
+        fline++;
+        if (s.startsWith("#")) { continue; }
+        line++;
+        // The name can be a line number, counted without(!!!) comment lines:
+        if (star_nr == line) {	// goto found:
+          slast_stardata = s;
+          slast_starname = sstar;
+          return new String[] { ""+fline, s };
+        } else if (star_nr > 0) {
+          continue;
+        }
+
+        if (s.indexOf(',') < 0) {
+          if (serr != null) {
+            serr.setLength(0);
+            serr.append("star file " + SweConst.SE_STARFILE + " damaged at line " + fline);
+          }
+          return null;
+        }
+
+        // The name can be before the first comma (case insensitive),
+        // or case sensitive after the comma (and including the comma):
+        if (!isnomclat && s.toLowerCase().startsWith(sstar)) {
+          slast_stardata = s;
+          slast_starname = sstar;
+          return new String[] { ""+fline, s };
+        } else if (isnomclat) {
+          String fstar=s.substring(s.indexOf(',')).trim();
+          if (fstar.startsWith(sstar)) {
+            slast_stardata = s;
+            slast_starname = sstar;
+            return new String[] { ""+fline, s };
+          }
+        }
+      }
+    } catch (java.io.IOException ioe) {
+    }
+    if (serr != null && star.length() < SwissData.AS_MAXCH - 20) {
+      serr.setLength(0);
+      serr.append("star  not found");
+      if (serr.length() + star.length() < SwissData.AS_MAXCH) {
+        serr.setLength(0);
+        serr.append("star "+star+" not found");
+      }
+    }
+    return null;
+  }
+
+  /**
+  * Computes fixed stars. This method is identical to swe_fixstar() with the
+  * one exception that the time has to be given in UT (Universal Time instead
+  * of Ephemeris Time or Dynamical Time ET).<P>
+  * The fixed stars are defined in the file sefstars.txt and the star
+  * parameter must refer to any entry in that file. The entries in that file
+  * start with <I>traditional_name&nbsp;,nomenclature_name,...</I>, e.g.,
+  * "<CODE>Alpheratz&nbsp;&nbsp;&nbsp;&nbsp;,alAnd,</CODE>"[...].
+  * @param star Actually, it is an input and an output parameter at the same
+  * time. So it is not possible to define it as a String, but rather as a
+  * StringBuffer. On input it defines the star to be calculated and can be
+  * in three forms:<BR>
+  * - as a positive integer number meaning the star in the file sefstars.txt
+  * that is given on the line number of the given number, without counting
+  * any comment lines beginning with #.<BR>
+  * - as a traditional name case insensitively compared to the first name
+  * on every line in sefstars.txt.<BR>
+  * - as a nomenclature prefixed by a comma. This name is compared in a case
+  * preserving manner to the nomenclature name on every line in
+  * sefstars.txt.<BR>
+  * On Output it returns the complete name (traditional plus nomenclature
+  * name), e.g. "<CODE>Alpheratz,alAnd</CODE>".<br>
+  * <b>ATTENTION: This method possibly (re-)sets a global parameter used
+  * in calculation of delta T. See SweDate.setGlobalTidalAcc(double).</b>
+  * @param tjd_ut The Julian Day in UT
+  * @param iflag Any of the SweConst.SEFLG_* flags
+  * @param xx A double[6] used as output parameter only. This returns
+  * longitude, latitude and the distance (in AU) of the fixed stars, but
+  * it does <B>not</B> return any speed values in xx[3] to xx[5] as it does
+  * in swe_calc() / swe_calc_ut(), even if you specify SweConst.SEFLG_SPEED
+  * in the flags parameter!
+  * @param serr A StringBuffer containing a warning or error message, if
+  * something fails.
+  * @return iflag or SweConst.ERR (-1); iflag MAY have changed from input
+  * parameter!
+  * @see #swe_fixstar(java.lang.StringBuffer, double, int, double[], java.lang.StringBuffer)
+  * @see SweDate#setGlobalTidalAcc(double)
+  */
+  public int swe_fixstar_ut(StringBuffer star, double tjd_ut, int iflag,
+                            double[] xx, StringBuffer serr) {
+    SweDate.swi_set_tid_acc(tjd_ut, iflag, 0);  
+    return swe_fixstar(star, tjd_ut + SweDate.getDeltaT(tjd_ut),
+                       iflag, xx, serr);
   }
 
 
@@ -898,7 +1397,13 @@ public class SwissEph
             s=swed.fidat[SwephData.SEI_FILE_ANY_AST].astnam;
           /* else try to get it from ephemeris file */
           } else {
-            s=(ipl - SweConst.SE_AST_OFFSET)+": not found";
+            retc = sweph(SwephData.J2000, ipl, SwephData.SEI_FILE_ANY_AST, 0,
+                         null, SwephData.NO_SAVE, xp, null);
+            if (retc != SweConst.ERR && retc != SwephData.NOT_AVAILABLE) {
+              s=swed.fidat[SwephData.SEI_FILE_ANY_AST].astnam;
+            } else {
+              s=(ipl - SweConst.SE_AST_OFFSET)+": not found";
+            }
           }
           /* If there is a provisional designation only in ephemeris file,
            * we look for a name in seasnam.txt, which can be updated by
@@ -917,6 +1422,37 @@ public class SwissEph
 // Hopefully, I did understand the whole thing correctly...
           if (s.charAt(0) == '?' || Character.isDigit(s.charAt(1))) {
             int ipli = (int) (ipl - SweConst.SE_AST_OFFSET), iplf = 0;
+            FilePtr fp = null;
+            String si;
+            try {
+              fp = swi_fopen(-1, SweConst.SE_ASTNAMFILE, swed.ephepath, null);
+            } catch (SwissephException se) {
+            }
+            if (fp != null) {
+              while(ipli != iplf) {
+                try {
+                  si=fp.readLine();
+                  if (si==null) { break; }
+                  StringTokenizer tk=new StringTokenizer(si," \t([{"); // }
+                  String sk=tk.nextToken();
+                  if (sk.startsWith("#") ||
+                      Character.isWhitespace(sk.charAt(0))) {
+                    continue;
+                  }
+                  /* catalog number of body of current line */
+                  iplf = Double.valueOf(sk).intValue();
+                  if (ipli != iplf) {
+                    continue;
+                  }
+                    s=tk.nextToken("#\r\n").trim();
+                  fp.close();
+                } catch (java.io.IOException ioe) {
+// NBT
+                } catch (NoSuchElementException nse) {
+                  continue; /* there is no name */
+                }
+              }
+            }
           }
         } else  {
           i = ipl;
@@ -937,6 +1473,57 @@ public class SwissEph
     if (isidmode < SwissData.SE_NSIDM_PREDEF)
       return SwissData.ayanamsa_name[isidmode];
     return null;
+  }
+
+  /**
+  * Returns the name of the house object.
+  * @param obj Constant for house object
+  * @return Corresponding string for this house constant
+  * @see SweConst#SE_HOUSE1
+  * @see SweConst#SE_HOUSE1
+  * @see SweConst#SE_HOUSE1
+  * @see SweConst#SE_HOUSE1
+  * @see SweConst#SE_HOUSE1
+  * @see SweConst#SE_HOUSE1
+  * @see SweConst#SE_HOUSE1
+  * @see SweConst#SE_HOUSE1
+  * @see SweConst#SE_HOUSE1
+  * @see SweConst#SE_HOUSE10
+  * @see SweConst#SE_HOUSE11
+  * @see SweConst#SE_HOUSE12
+  * @see SweConst#SE_ASC
+  * @see SweConst#SE_MC
+  * @see SweConst#SE_ARMC
+  * @see SweConst#SE_VERTEX
+  * @see SweConst#SE_EQUASC
+  * @see SweConst#SE_COASC1
+  * @see SweConst#SE_COASC2
+  * @see SweConst#SE_POLASC
+  */
+  public static String getHouseobjectname(int obj) {
+    switch(obj) {
+	case SweConst.SE_HOUSE1: return "house 1";
+	case SweConst.SE_HOUSE2: return "house 2";
+	case SweConst.SE_HOUSE3: return "house 3";
+	case SweConst.SE_HOUSE4: return "house 4";
+	case SweConst.SE_HOUSE5: return "house 5";
+	case SweConst.SE_HOUSE6: return "house 6";
+	case SweConst.SE_HOUSE7: return "house 7";
+	case SweConst.SE_HOUSE8: return "house 8";
+	case SweConst.SE_HOUSE9: return "house 9";
+	case SweConst.SE_HOUSE10: return "house 10";
+	case SweConst.SE_HOUSE11: return "house 11";
+	case SweConst.SE_HOUSE12: return "house 12";
+        case SweConst.SE_ASC: return "ascendant";
+        case SweConst.SE_MC: return "medium coeli";
+        case SweConst.SE_ARMC: return "sidereal time";
+        case SweConst.SE_VERTEX: return "vertex";
+        case SweConst.SE_EQUASC: return "equatorial ascendant";
+        case SweConst.SE_COASC1: return "co-ascendant of W. Koch";
+        case SweConst.SE_COASC2: return "co-ascendant of M. Munkasey";
+        case SweConst.SE_POLASC: return "polar asc. of M. Munkasey";
+    }
+    return "";
   }
 
   /* set geographic position and altitude of observer */
@@ -960,6 +1547,31 @@ public class SwissEph
     swi_force_app_pos_etc();
   }
 
+  /**
+  * Returns the range of dates for a data file as [start, end]
+  * @param fname filename of the JPL data file. Filenames are searched for
+  * in the directories of SE_EPHE_PATH or set by SwissEph(String) or
+  * swe_set_ephe_path().<br>
+  * Throws SwissephException, when file cannot be found or is not
+  * readable or seems to be damaged.
+  * @return double[2] with start and end date as julian day numbers.
+  * @see SweConst#SE_EPHE_PATH
+  * @see SwissEph#SwissEph(java.lang.String)
+  * @see SwissEph#swe_set_ephe_path(java.lang.String)
+  */
+  public double[] getDatafileTimerange(String fname) throws SwissephException {
+    if (java.util.regex.Pattern.matches(".*\\Ws(e|[0-9])[0-9][0-9][0-9][0-9][0-9](s|).se1", fname)) {
+      return new FileData().getDatafileTimerange(this, fname, swed.ephepath, true);
+    } else if (java.util.regex.Pattern.matches("seas[_m][0-9]+.se1", fname) ||
+        java.util.regex.Pattern.matches("semo[_m][0-9]+.se1", fname) ||
+        java.util.regex.Pattern.matches("sepl[_m][0-9]+.se1", fname)) {
+      return new FileData().getDatafileTimerange(this, fname, swed.ephepath);
+    }
+    if (sj==null) {
+      sj=new SwephJPL(this, swed, sl);
+    }
+    return sj.getJPLRange(fname);
+  }
 
   ////////////////////////////////////////////////////////////////////////////
   // Methods from Swecl.java: ////////////////////////////////////////////////
@@ -1041,8 +1653,8 @@ public class SwissEph
   * <b>ATTENTION: This method possibly (re-)sets a global parameter used
   * in calculation of delta T. See SweDate.setGlobalTidalAcc(double).</b>
   * @param tjd_ut The Julian Day number in UT
-  * @param ifl To indicate, which ephemeris should be used (SEFLG_MOSEPH
-  * only for JAVAME)
+  * @param ifl To indicate, which ephemeris should be used (SEFLG_JPLEPH,
+  * SEFLG_SWIEPH or SEFLG_MOSEPH)
   * @param geopos A double[3] containing geographic longitude, latitude and
   * height in meters above sea level in this order. Eastern longitude and
   * northern latitude is given by positive values, western longitude and
@@ -1086,8 +1698,8 @@ public class SwissEph
   * <b>ATTENTION: This method possibly (re-)sets a global parameter used
   * in calculation of delta T. See SweDate.setGlobalTidalAcc(double).</b>
   * @param tjd_start The Julian Day number in UT, from when to start searching
-  * @param ifl To indicate, which ephemeris should be used (SEFLG_MOSEPH
-  * only for JavaME)
+  * @param ifl To indicate, which ephemeris should be used (SEFLG_JPLEPH,
+  * SEFLG_SWIEPH or SEFLG_MOSEPH)
   * @param ifltype SweConst.SE_ECL_TOTAL for total eclipse or 0 for any eclipse
   * @param tret A double[10], on return containing the times of different
   * occasions of the eclipse as above
@@ -1138,8 +1750,30 @@ public class SwissEph
   * in ET (Ephemeris Time or Dynamical Time). You would get ET by adding
   * deltaT to the UT, e.g.,
   * <CODE>tjd_et&nbsp;+&nbsp;SweDate.getDeltaT(tjd_et)</CODE>.<P>
-  * See swe_nod_aps_ut(...) for missing information.
+  * @param tjd_et The time in ET
+  * @param ipl Planet number
+  * @param iflag Any of the SEFLG_* flags
+  * @param method Defines, what kind of calculation is wanted (SE_NODBIT_MEAN,
+  * SE_NODBIT_OSCU, SE_NODBIT_OSCU_BAR, SE_NODBIT_FOPOINT)
+  * @param xnasc Output parameter of double[6]. On return it contains six
+  * doubles for the ascending node
+  * @param xndsc Output parameter of double[6]. On return it contains six
+  * doubles for the descending node
+  * @param xperi Output parameter of double[6]. On return it contains six
+  * doubles for the perihelion
+  * @param xaphe Output parameter of double[6]. On return it contains six
+  * doubles for the aphelion
+  * @param serr A StringBuffer containing a warning or error message, if
+  * something fails.
+  * @return SweConst.OK (0) or SweConst.ERR (-1)
   * @see SwissEph#swe_nod_aps_ut(double, int, int, int, double[], double[], double[], double[], java.lang.StringBuffer)
+  * @see SweConst#OK
+  * @see SweConst#ERR
+  * @see SweConst#SE_NODBIT_MEAN
+  * @see SweConst#SE_NODBIT_OSCU
+  * @see SweConst#SE_NODBIT_OSCU_BAR
+  * @see SweConst#SE_NODBIT_FOPOINT
+  * @see SweDate#setGlobalTidalAcc(double)
   */
   public int swe_nod_aps(double tjd_et, int ipl, int iflag, int  method,
                          double[] xnasc, double[] xndsc,
@@ -1203,7 +1837,37 @@ public class SwissEph
   * would get ET by adding deltaT to the UT, e.g.,
   * <CODE>tjd_et&nbsp;+&nbsp;SweDate.getDeltaT(tjd_et)</CODE>.<P>
   * See swe_pheno_ut() for missing information.
+  * Computes phase, phase angel, elongation, apparent diameter and apparent
+  * magnitude for sun, moon, all planets and asteroids.
+  * <P>attr is an output parameter with the following meaning:</p>
+  * <BLOCKQUOTE><CODE>
+  * attr[0]:&nbsp;&nbsp;&nbsp;phase angle (earth-planet-sun).<BR>
+  * attr[1]:&nbsp;&nbsp;&nbsp;phase (illumined fraction of disc).<BR>
+  * attr[2]:&nbsp;&nbsp;&nbsp;elongation of planet.<BR>
+  * attr[3]:&nbsp;&nbsp;&nbsp;apparent diameter of disc.<BR>
+  * attr[4]:&nbsp;&nbsp;&nbsp;apparent magnitude.<BR>
+  * </CODE></BLOCKQUOTE><P><B>Attention: attr must be a double[20]!</B><br>
+  * <b>ATTENTION: This method possibly (re-)sets a global parameter used
+  * in calculation of delta T. See SweDate.setGlobalTidalAcc(double).</b>
+  * @param tjd The Julian Day number in ET.
+  * @param ipl The body number to be calculated. See class
+  * <A HREF="SweConst.html">SweConst</A> for a list of bodies (SE_*)
+  * @param iflag Which ephemeris is to be used (SEFLG_JPLEPH, SEFLG_SWIEPH,
+  * SEFLG_MOSEPH). Other flags: SEFLG_TRUEPOS, SEFLG_HELCTR.
+  * @param attr A double[20] in which the result is returned. See above for more
+  * details.
+  * @param serr A StringBuffer containing a warning or error message, if
+  * something fails.
+  * @return SweConst.OK (0) or SweConst.ERR (-1)
   * @see SwissEph#swe_pheno_ut(double, int, int, double[], java.lang.StringBuffer)
+  * @see SweConst#OK
+  * @see SweConst#ERR
+  * @see SweConst#SEFLG_JPLEPH
+  * @see SweConst#SEFLG_SWIEPH
+  * @see SweConst#SEFLG_MOSEPH
+  * @see SweConst#SEFLG_TRUEPOS
+  * @see SweConst#SEFLG_HELCTR
+  * @see SweDate#setGlobalTidalAcc(double)
   */
   public int swe_pheno(double tjd, int ipl, int iflag, double[] attr,
                        StringBuffer serr) {
@@ -1216,8 +1880,8 @@ public class SwissEph
   /**
   * Computes phase, phase angel, elongation, apparent diameter and apparent
   * magnitude for sun, moon, all planets and asteroids.
-  * <P>attr is an output parameter with the following meaning:
-  * <P><BLOCKQUOTE><CODE>
+  * <P>attr is an output parameter with the following meaning:</p>
+  * <BLOCKQUOTE><CODE>
   * attr[0]:&nbsp;&nbsp;&nbsp;phase angle (earth-planet-sun).<BR>
   * attr[1]:&nbsp;&nbsp;&nbsp;phase (illumined fraction of disc).<BR>
   * attr[2]:&nbsp;&nbsp;&nbsp;elongation of planet.<BR>
@@ -1229,9 +1893,8 @@ public class SwissEph
   * @param tjd_ut The Julian Day number in UT (Universal Time).
   * @param ipl The body number to be calculated. See class
   * <A HREF="SweConst.html">SweConst</A> for a list of bodies (SE_*)
-  * @param iflag Which ephemeris is to be used (SEFLG_MOSEPH only
-  * for JavaME)
-  * SEFLG_MOSEPH). Also allowable flags: SEFLG_TRUEPOS, SEFLG_HELCTR.
+  * @param iflag Which ephemeris is to be used (SEFLG_JPLEPH, SEFLG_SWIEPH,
+  * SEFLG_MOSEPH). Other flags: SEFLG_TRUEPOS, SEFLG_HELCTR.
   * @param attr A double[20] in which the result is returned. See above for more
   * details.
   * @param serr A StringBuffer containing a warning or error message, if
@@ -1239,6 +1902,7 @@ public class SwissEph
   * @return SweConst.OK (0) or SweConst.ERR (-1)
   * @see SweConst#OK
   * @see SweConst#ERR
+  * @see SweConst#SEFLG_JPLEPH
   * @see SweConst#SEFLG_SWIEPH
   * @see SweConst#SEFLG_MOSEPH
   * @see SweConst#SEFLG_TRUEPOS
@@ -1276,7 +1940,7 @@ public class SwissEph
   * @param atpress Atmospheric pressure in mBar (hPa). If it is 0, the pressure
   * will be estimated from attemp on sea level.
   * @param attemp Atmospheric temperature in degrees Celsius.
-  * @param lapse_rate (dattemp/dgeoalt) = [°K/m]
+  * @param lapse_rate (dattemp/dgeoalt) = [��K/m]
   * @param calc_flag SweConst.SE_TRUE_TO_APP or SweConst.SE_APP_TO_TRUE
   * @param dret output parameter, use a double[4] as input.
   * <pre>
@@ -1301,8 +1965,8 @@ public class SwissEph
   * @param ipl Planet number, if times for planet or moon are to be calculated.
   * @param starname The name of the star, if times for a star should be
   * calculated. It has to be null or the empty string otherwise!
-  * @param epheflag To indicate, which ephemeris should be used (SEFLG_MOSEPH
-  * only for JavaME)
+  * @param epheflag To indicate, which ephemeris should be used (SEFLG_JPLEPH,
+  * SEFLG_SWIEPH or SEFLG_MOSEPH)
   * @param rsmi Specification, what type of calculation is wanted
   * (SE_CALC_RISE, SE_CALC_SET, SE_CALC_MTRANSIT, SE_CALC_ITRANSIT). For
   * SE_CALC_RISE or SE_CALC_SET you may add SE_BIT_DISC_CENTER for rise
@@ -1328,7 +1992,7 @@ public class SwissEph
   * @return SweConst.OK (0) or SweConst.ERR (-1)  or -2 if the body does not rise or set
   * @see SweConst#OK
   * @see SweConst#ERR
-  * @see SweConst#SEFLG_SWIEPH
+  * @see SweConst#SEFLG_JPLEPH
   * @see SweConst#SEFLG_MOSEPH
   * @see SweConst#SE_CALC_RISE
   * @see SweConst#SE_CALC_SET
@@ -1355,10 +2019,47 @@ public class SwissEph
   }
   /**
   * Same as swe_rise_trans(), but allows to define the height of the horizon
-  * at the point of the rising or setting (horhgt) in deg. See there for more
-  * information.<br>
+  * at the point of the rising or setting (horhgt) in degree.<br>
   * <b>ATTENTION: This method possibly (re-)sets a global parameter used in calculation of delta T. See SweDate.setGlobalTidalAcc(double).</b>
+  * @param tjd_ut The Julian Day number in UT, from when to start searching
+  * @param ipl Planet number, if times for planet or moon are to be calculated.
+  * @param starname The name of the star, if times for a star should be
+  * calculated. It has to be null or the empty string otherwise!
+  * @param epheflag To indicate, which ephemeris should be used (SEFLG_JPLEPH,
+  * SEFLG_SWIEPH or SEFLG_MOSEPH)
+  * @param rsmi Specification, what type of calculation is wanted
+  * (SE_CALC_RISE, SE_CALC_SET, SE_CALC_MTRANSIT, SE_CALC_ITRANSIT) plus
+  * optionally SE_BIT_DISC_CENTER, when the rise time of the disc center
+  * of the body is requested and / or SE_BIT_NO_REFRACTION for calculation
+  * without refraction effects. The calculation method defaults to
+  * SE_CALC_RISE.
+  * @param geopos A double[3] containing the longitude, latitude and
+  * height of the observer. Eastern longitude and northern
+  * latitude is given by positive values, western longitude and southern
+  * latitude by negative values.
+  * @param atpress atmospheric pressure in mBar (hPa). If it is 0, the pressure
+  * will be estimated from geopos[2] and attemp (1013.25 mbar for sea level).
+  * When calculating MTRANSIT or ITRANSIT, this parameter is not used.
+  * @param attemp atmospheric temperature in degrees Celsius. When
+  * calculating MTRANSIT or ITRANSIT, this parameter is not used.
+  * @param horhgt Height of horizon in degree.
+  * @param tret Return value containing the time of rise or whatever was
+  * requested. This is UT.
+  * @param serr A StringBuffer containing a warning or error message, if
+  * something fails
+  * @return SweConst.OK (0) or SweConst.ERR (-1)  or -2 if the body does not rise or set
   * @see #swe_rise_trans(double, int, StringBuffer, int, int, double[], double, double, DblObj, StringBuffer)
+  * @see SweConst#OK
+  * @see SweConst#ERR
+  * @see SweConst#SEFLG_JPLEPH
+  * @see SweConst#SEFLG_MOSEPH
+  * @see SweConst#SE_CALC_RISE
+  * @see SweConst#SE_CALC_SET
+  * @see SweConst#SE_CALC_MTRANSIT
+  * @see SweConst#SE_CALC_ITRANSIT
+  * @see SweConst#SE_BIT_DISC_CENTER
+  * @see SweConst#SE_BIT_NO_REFRACTION
+  * @see DblObj
   * @see SweDate#setGlobalTidalAcc(double)
   */
   public int swe_rise_trans_true_hor(
@@ -1379,7 +2080,7 @@ public class SwissEph
   /**
   * Computes the attributes of a solar eclipse for a given Julian Day,
   * geographic longitude, latitude, and height.
-  * <P><BLOCKQUOTE><CODE>
+  * <BLOCKQUOTE><CODE>
   * attr[0]:&nbsp;&nbsp;&nbsp;fraction of solar diameter covered by moon
   * (magnitude)<BR>
   * attr[1]:&nbsp;&nbsp;&nbsp;ratio of lunar diameter to solar one<BR>
@@ -1390,12 +2091,12 @@ public class SwissEph
   * attr[5]:&nbsp;&nbsp;&nbsp;true altitude of sun above horizon at tjd<BR>
   * attr[6]:&nbsp;&nbsp;&nbsp;apparent altitude of sun above horizon at tjd<BR>
   * attr[7]:&nbsp;&nbsp;&nbsp;angular distance of moon from sun in degrees
-  * </CODE></BLOCKQUOTE><P><B>Attention: attr must be a double[20]!</B><br>
+  * </CODE></BLOCKQUOTE><p><B>Attention: attr must be a double[20]!</B><br>
   * <b>ATTENTION: This method possibly (re-)sets a global parameter used
   * in calculation of delta T. See SweDate.setGlobalTidalAcc(double).</b>
   * @param tjd_ut The Julian Day number in UT
-  * @param ifl To indicate, which ephemeris should be used (SEFLG_MOSEPH
-  * only for JavaME)
+  * @param ifl To indicate, which ephemeris should be used (SEFLG_JPLEPH,
+  * SEFLG_SWIEPH or SEFLG_MOSEPH)
   * @param geopos A double[3] containing geographic longitude, latitude and
   * height in meters above sea level in this order. Eastern longitude and
   * northern latitude is given by positive values, western longitude and
@@ -1412,7 +2113,7 @@ public class SwissEph
   * @see SweConst#SE_ECL_TOTAL
   * @see SweConst#SE_ECL_ANNULAR
   * @see SweConst#SE_ECL_PARTIAL
-  * @see SweConst#SEFLG_SWIEPH
+  * @see SweConst#SEFLG_JPLEPH
   * @see SweConst#SEFLG_MOSEPH
   * @see SweDate#setGlobalTidalAcc(double)
   */
@@ -1445,8 +2146,8 @@ public class SwissEph
   * <b>ATTENTION: This method possibly (re-)sets a global parameter used
   * in calculation of delta T. See SweDate.setGlobalTidalAcc(double).</b>
   * @param tjd_start The Julian Day number in UT, from when to start searching
-  * @param ifl To indicate, which ephemeris should be used (SEFLG_MOSEPH
-  * only for JavaME)
+  * @param ifl To indicate, which ephemeris should be used (SEFLG_JPLEPH,
+  * SEFLG_SWIEPH or SEFLG_MOSEPH)
   * @param ifltype SweConst.SE_ECL_TOTAL or any other SE_ECL_* constant
   * or 0 for any type of eclipse:
   * <blockquote>
@@ -1468,7 +2169,7 @@ public class SwissEph
   * @see SweConst#SE_ECL_PARTIAL
   * @see SweConst#SE_ECL_ANNULAR_TOTAL
   * @see SweConst#SE_ECL_CENTRAL
-  * @see SweConst#SEFLG_SWIEPH
+  * @see SweConst#SEFLG_JPLEPH
   * @see SweConst#SEFLG_MOSEPH
   * @see SweDate#setGlobalTidalAcc(double)
   */
@@ -1513,8 +2214,8 @@ public class SwissEph
   * <b>ATTENTION: This method possibly (re-)sets a global parameter used
   * in calculation of delta T. See SweDate.setGlobalTidalAcc(double).</b>
   * @param tjd_start The Julian Day number in UT, from when to start searching
-  * @param ifl To indicate, which ephemeris should be used (SEFLG_MOSEPH
-  * only for JavaME)
+  * @param ifl To indicate, which ephemeris should be used (SEFLG_JPLEPH,
+  * SEFLG_SWIEPH or SEFLG_MOSEPH)
   * @param geopos A double[3] containing the longitude, latitude and
   * height of the geographic position. Eastern longitude and northern
   * latitude is given by positive values, western longitude and southern
@@ -1545,7 +2246,7 @@ public class SwissEph
   * @see SweConst#SE_ECL_2ND_VISIBLE
   * @see SweConst#SE_ECL_3RD_VISIBLE
   * @see SweConst#SE_ECL_4TH_VISIBLE
-  * @see SweConst#SEFLG_SWIEPH
+  * @see SweConst#SEFLG_JPLEPH
   * @see SweConst#SEFLG_MOSEPH
   * @see SweDate#setGlobalTidalAcc(double)
   */
@@ -1561,9 +2262,9 @@ public class SwissEph
   }
 
   /**
-  * Computes the geographic location for a given time, where a solar
-  * eclipse is central (or maximum for a non-central eclipse).
-  * <P>Output parameters:<P><BLOCKQUOTE><CODE>
+  * <p>Computes the geographic location for a given time, where a solar
+  * eclipse is central (or maximum for a non-central eclipse).</p>
+  * <P>Output parameters:</P><BLOCKQUOTE><CODE>
   * geopos[0]:&nbsp;&nbsp;&nbsp;geographic longitude of central line, positive
   * values mean east of Greenwich, negative values west of Greenwich<BR>
   * geopos[1]:&nbsp;&nbsp;&nbsp;geographic latitude of central line,
@@ -1584,8 +2285,8 @@ public class SwissEph
   * <b>ATTENTION: This method possibly (re-)sets a global parameter used
   * in calculation of delta T. See SweDate.setGlobalTidalAcc(double).</b>
   * @param tjd_ut The Julian Day number in UT
-  * @param ifl To indicate, which ephemeris should be used (SEFLG_MOSEPH
-  * only for JavaME)
+  * @param ifl To indicate, which ephemeris should be used (SEFLG_JPLEPH,
+  * SEFLG_SWIEPH or SEFLG_MOSEPH)
   * @param geopos A double[10], on return containing the geographic positions.
   * @param attr A double[20], on return containing the attributes of the
   * eclipse as above.
@@ -1605,7 +2306,7 @@ public class SwissEph
   * @see SweConst#SE_ECL_CENTRAL
   * @see SweConst#SE_ECL_NONCENTRAL
   * @see SweConst#SE_ECL_PARTIAL
-  * @see SweConst#SEFLG_SWIEPH
+  * @see SweConst#SEFLG_JPLEPH
   * @see SweConst#SEFLG_MOSEPH
   * @see SweDate#setGlobalTidalAcc(double)
   */
@@ -1670,8 +2371,8 @@ public class SwissEph
   * fixstar. This has to be null or an empty StringBuffer, if you are looking
   * for a planet specified in parameter ipl. See routine swe_fixstar() for this
   * parameter.
-  * @param ifl To indicate, which ephemeris should be used (SEFLG_MOSEPH
-  * only for JavaME)
+  * @param ifl To indicate, which ephemeris should be used (SEFLG_JPLEPH,
+  * SEFLG_SWIEPH or SEFLG_MOSEPH)
   * Additionally, you can specify SE_ECL_ONE_TRY,
   * to only search for one conjunction of the moon with the planetary body.
   * If this flag is not set, the function will search for an occultation until
@@ -1710,7 +2411,7 @@ public class SwissEph
   * @see SweConst#SE_ECL_3RD_VISIBLE
   * @see SweConst#SE_ECL_4TH_VISIBLE
   * @see SweConst#SE_ECL_ONE_TRY
-  * @see SweConst#SEFLG_SWIEPH
+  * @see SweConst#SEFLG_JPLEPH
   * @see SweConst#SEFLG_MOSEPH
   * @see SweDate#setGlobalTidalAcc(double)
   */
@@ -1767,8 +2468,8 @@ public class SwissEph
   * string, if a planet (see parameter ipl) is to be searched.<br>
   * <b>ATTENTION: This method possibly (re-)sets a global parameter used
   * in calculation of delta T. See SweDate.setGlobalTidalAcc(double).</b>
-  * @param ifl To indicate, which ephemeris should be used (SEFLG_MOSEPH
-  * only for JavaME)
+  * @param ifl To indicate, which ephemeris should be used (SEFLG_JPLEPH,
+  * SEFLG_SWIEPH or SEFLG_MOSEPH)
   * @param geopos A double[10], on return containing the geographic positions.
   * @param attr A double[20], on return containing the attributes of the
   * eclipse as above.<br>
@@ -1882,8 +2583,8 @@ public class SwissEph
   * @param starname name of occulted star. Must be null or &quot;&quot;, if
   * a planetary occultation is to be calculated. For the use of this
   * field, also see swe_fixstar().
-  * @param ifl To indicate, which ephemeris should be used (SEFLG_MOSEPH
-  * only for JavaME)
+  * @param ifl To indicate, which ephemeris should be used (SEFLG_JPLEPH,
+  * SEFLG_SWIEPH or SEFLG_MOSEPH)
   * If you like to have only one conjunction
   * of the moon with the body tested, add flag SE_ECL_ONE_TRY. If this flag
   * is not set, the function will search for an occultation until it
@@ -1913,7 +2614,7 @@ public class SwissEph
   * @see SweConst#SE_ECL_ANNULAR_TOTAL
   * @see SweConst#SE_ECL_CENTRAL
   * @see SweConst#SE_ECL_NONCENTRAL
-  * @see SweConst#SEFLG_SWIEPH
+  * @see SweConst#SEFLG_JPLEPH
   * @see SweConst#SEFLG_MOSEPH
   * @see SweDate#setGlobalTidalAcc(double)
   */
@@ -1929,7 +2630,7 @@ public class SwissEph
   /* function finds the gauquelin sector position of a planet or fixed star
    * 
    * if starname != NULL then a star is computed.
-   * iflag: use the flags SE_MOSEPH, SEFLG_TOPOCTR.
+   * iflag: use the flags SE_SWIEPH, SE_JPLEPH, SE_MOSEPH, SEFLG_TOPOCTR.
    *
    * imeth defines method:
    *           imeth = 0                  sector from longitude and latitude
@@ -1952,7 +2653,7 @@ public class SwissEph
   * @param starname If starname != null and not an empty string, then a
   * fixstar is computed and not a planet specified in ipl. See swe_fixstar()
   * method on this.
-  * @param iflag Use the flags SE_MOSEPH, SEFLG_TOPOCTR.
+  * @param iflag Use the flags SE_SWIEPH, SE_JPLEPH, SE_MOSEPH, SEFLG_TOPOCTR.
   * @param imeth defines the method.<br>
   * <blockquote>
   * imeth = 0: sector from longitude and latitude<br>
@@ -1971,7 +2672,7 @@ public class SwissEph
   * @return SweConst.OK (0) or SweConst.ERR (-1) on error.
   * @see #swe_fixstar_ut(StringBuffer, double, int, double[], StringBuffer)
   * @see SweConst#SEFLG_TOPOCTR
-  * @see SweConst#SEFLG_SWIEPH
+  * @see SweConst#SEFLG_JPLEPH
   * @see SweConst#SEFLG_MOSEPH
   */
   public int swe_gauquelin_sector(double t_ut, int ipl, StringBuffer starname, int iflag, int imeth, double[] geopos, double atpress, double attemp, DblObj dgsect, StringBuffer serr) {
@@ -1986,7 +2687,7 @@ public class SwissEph
   /**
   * The function returns the name of the house system.
   * @param hsys House system character
-  * house systems are:<P><BLOCKQUOTE><CODE>
+  * house systems are:<BLOCKQUOTE><CODE>
   * A&nbsp;&nbsp;equal<br>
   * E&nbsp;&nbsp;equal<br>
   * B&nbsp;&nbsp;Alcabitius<br>
@@ -2061,7 +2762,7 @@ public class SwissEph
   * @param ascmc The special points like ascendant etc. are returned here.
   * See swe_houses(...) for further info on this parameter.
   * @see SwissEph#swe_houses(double, int, double, double, int, double[], double[])
-  * @see SwissEph#swe_calc
+  * @see SwissEph#swe_calc(double, int, int, double[], java.lang.StringBuffer)
   * @return SweConst.OK (==0) or SweConst.ERR (==-1), if calculation was not
   * possible due to nearness to the polar circle in Koch or Placidus house system
   * or when requesting Gauquelin sectors. Calculation automatically switched to
@@ -2079,7 +2780,7 @@ public class SwissEph
 
   /**
   * Calculates the house positions and other vital points. The possible
-  * house systems are:<P><BLOCKQUOTE><CODE>
+  * house systems are:<BLOCKQUOTE><CODE>
   * (int)'A'&nbsp;&nbsp;equal<br>
   * (int)'E'&nbsp;&nbsp;equal<br>
   * (int)'B'&nbsp;&nbsp;Alcabitius<br>
@@ -2100,7 +2801,7 @@ public class SwissEph
   * </CODE></BLOCKQUOTE><P>
   *
   * The parameter ascmc is defined as double[10] and will return the
-  * following points:<P><BLOCKQUOTE><CODE>
+  * following points:<BLOCKQUOTE><CODE>
   * ascmc[0] = ascendant<BR>
   * ascmc[1] = mc<BR>
   * ascmc[2] = armc (= sidereal time)<BR>
@@ -2162,15 +2863,15 @@ public class SwissEph
   /**
   * -- NOT YET IMPLEMENTED -- File to read from and write to the maximum and minimum speeds of planets
   * and other objects.<br>
-  * If the maximum and minimum speeds of a transit object is not know, the
+  * If the maximum and minimum speeds of a transit object is not known, the
   * routines calculate some number of random speeds to get an idea of the
   * extreme speeds. This is necessary, as one cannot find out about transits,
-  * if one doesn't have some idea about their movements.<br>
+  * if one doesn't have some idea about their movement.<br>
   * If the transit speeds file is set, the transit routines will read the
   * extreme speeds from this file and write findings due to the random
   * calculations done on initialization of the TransitCalculator to this
   * file, so the results may become more reliable and the calculations
-  * faster.<br>
+  * faster with time.<br>
   * This method throws IOException if the file cannot be read (or found) or
   * isn't writeable, if param <code>writeable</code> is true.
   * @param fname The filename to be used. It should be writable, so the
@@ -2317,6 +3018,7 @@ public class SwissEph
     PlanData psdp = swed.pldat[SwephData.SEI_SUNBARY];
     PlanData ndp;
     double xp[], xp2[];
+    double ss[]=new double[3];
     String serr2="";
 
     if (serr!=null) { serr.setLength(0); }
@@ -2326,7 +3028,8 @@ public class SwissEph
      iflag = plaus_iflag(iflag, ipl, tjd, serr);
     /******************************************
      * which ephemeris is wanted, which is used?
-     * Only one ephemeride is possible: MOSEPH.
+     * Three ephemerides are possible: MOSEPH, SWIEPH, JPLEPH.
+     * JPLEPH is best, SWIEPH is nearly as good, MOSEPH is least precise.
      * The availability of the various ephemerides depends on the installed
      * ephemeris files in the users ephemeris directory. This can change at
      * any time.
@@ -2338,13 +3041,19 @@ public class SwissEph
      * If the time range is bad but another ephemeris can deliver this range,
      * the other ephemeris is used.
      * If no ephemeris is specified, DEFAULTEPH is assumed as desired.
-     * DEFAULTEPH is defined at compile time, with JavaME it is MOSEPH always.
+     * DEFAULTEPH is defined at compile time, usually as SWIEPH.
      * The caller learns from the return flag which ephemeris was used.
      * ephe_flag is extracted from iflag, but can change later if the
      * desired ephe is not available.
      ******************************************/
     if ((iflag & SweConst.SEFLG_MOSEPH)!=0) {
       epheflag = SweConst.SEFLG_MOSEPH;
+    }
+    if ((iflag & SweConst.SEFLG_SWIEPH)!=0) {
+      epheflag = SweConst.SEFLG_SWIEPH;
+    }
+    if ((iflag & SweConst.SEFLG_JPLEPH)!=0) {
+      epheflag = SweConst.SEFLG_JPLEPH;
     }
     /* no barycentric calculations with Moshier ephemeris */
     if (((iflag & SweConst.SEFLG_BARYCTR)!=0) &&
@@ -2355,7 +3064,7 @@ public class SwissEph
       throw new SwissephException(tjd, SwissephException.INVALID_PARAMETER_COMBINATION,
           SweConst.ERR, serr);
     }
-    if (epheflag != SweConst.SEFLG_MOSEPH && !swed.ephe_path_is_set) {
+    if (epheflag != SweConst.SEFLG_MOSEPH && !swed.ephe_path_is_set && !swed.jpl_file_is_open) {
       swe_set_ephe_path(null);
     }
     if ((iflag & SweConst.SEFLG_SIDEREAL)!=0 && !swed.ayana_is_set) {
@@ -2392,6 +3101,51 @@ public class SwissEph
       pdp = swed.pldat[ipli];
       xp = pdp.xreturn;
       switch(epheflag) {
+        case SweConst.SEFLG_JPLEPH:
+          try {
+            retc = jplplan(tjd, ipli, iflag, SwephData.DO_SAVE, null,null,null, serr);
+          } catch (SwissephException swe) {
+            retc = swe.getRC();
+            /* read error or corrupt file */
+            if (retc == SweConst.ERR) {
+              swecalc_error(x);
+              throw new SwissephException(tjd, SwissephException.DAMAGED_FILE_ERROR,
+                  SweConst.ERR, serr);
+            }
+          }
+          /* jpl ephemeris not on disk or date beyond ephemeris range
+           *     or file corrupt */
+          if (retc == SwephData.NOT_AVAILABLE) {
+            iflag = (iflag & ~SweConst.SEFLG_JPLEPH) | SweConst.SEFLG_SWIEPH;
+            if (serr != null && serr.length() + 30 < SwissData.AS_MAXCH) {
+              serr.append(" \ntrying Swiss Eph; ");
+            }
+            retc =  sweph_moon(tjd, ipli, iflag, serr);
+            if (retc == SweConst.ERR) {
+              return swecalc_error(x);
+            }
+          } else if (retc == SwephData.BEYOND_EPH_LIMITS) {
+            if (tjd > SwephData.MOSHLUEPH_START &&
+                tjd < SwephData.MOSHLUEPH_END) {
+              iflag = (iflag & ~SweConst.SEFLG_JPLEPH) | SweConst.SEFLG_MOSEPH;
+              if (serr != null && serr.length() + 30 < SwissData.AS_MAXCH) {
+                serr.append(" \nusing Moshier Eph; ");
+              }
+//              goto moshier_moon;
+              retc = moshier_moon(tjd, SwephData.DO_SAVE, null, serr);
+              if (retc == SweConst.ERR) {
+                return swecalc_error(x);
+              }
+            } else
+              return swecalc_error(x);
+          }
+          break;
+        case SweConst.SEFLG_SWIEPH:
+          retc =  sweph_moon(tjd, ipli,iflag, serr);
+          if (retc == SweConst.ERR) {
+            return swecalc_error(x);
+          }
+          break;
         case SweConst.SEFLG_MOSEPH:
 //          moshier_moon:
           retc = moshier_moon(tjd, SwephData.DO_SAVE, null, serr);
@@ -2408,7 +3162,7 @@ public class SwissEph
       }
     /**********************************************
      * barycentric sun                            *
-     * (SWISSEPH ephemerises)        *
+     * (only JPL and SWISSEPH ephemerises)        *
      **********************************************/
     } else if (ipl == SweConst.SE_SUN &&
                                      ((iflag & SweConst.SEFLG_BARYCTR)!=0)) {
@@ -2429,9 +3183,64 @@ public class SwissEph
       xp = pedp.xreturn;
 
       switch (epheflag) {
+        case SweConst.SEFLG_JPLEPH:
+          /* open ephemeris, if still closed */
+          if (!swed.jpl_file_is_open) {
+            retc = open_jpl_file(ss, swed.jplfnam, swed.ephepath, serr);
+            if (retc != SweConst.OK) {
+              retc = sweph_sbar(tjd, iflag, psdp, pedp, serr);
+            }
+            if (retc == SweConst.ERR) {
+              return swecalc_error(x);
+            }
+          }
+          try {
+            retc = sj.swi_pleph(tjd, SwephJPL.J_SUN, SwephJPL.J_SBARY, psdp.x, serr);
+          } catch (SwissephException se) {
+            retc = se.getRC();
+          }
+          if (retc == SweConst.ERR || retc == SwephData.BEYOND_EPH_LIMITS) {
+            sj.swi_close_jpl_file();
+            swed.jpl_file_is_open = false;
+            return swecalc_error(x);
+          }
+          /* jpl ephemeris not on disk or date beyond ephemeris range
+           *     or file corrupt */
+          if (retc == SwephData.NOT_AVAILABLE) {
+            iflag = (iflag & ~SweConst.SEFLG_JPLEPH) | SweConst.SEFLG_SWIEPH;
+            if (serr != null && serr.length() + 30 < SwissData.AS_MAXCH) {
+              serr.append(" \ntrying Swiss Eph; ");
+            }
+            retc = sweph_sbar(tjd, iflag, psdp, pedp, serr);
+            if (retc == SweConst.ERR) {
+              return swecalc_error(x);
+            }
+          }
+          psdp.teval = tjd;
+          break;
+        case SweConst.SEFLG_SWIEPH:
+          retc = sweph_sbar(tjd, iflag, psdp, pedp, serr);
+          if (retc == SweConst.ERR) {
+            return swecalc_error(x);
+          }
+          break;
         default:
           return SweConst.ERR;
       }
+      /* flags */
+      if ((retc = app_pos_etc_sbar(iflag, serr)) != SweConst.OK) {
+        return swecalc_error(x);
+      }
+      /* iflag has possibly changed */
+      iflag = pedp.xflgs;
+      /* barycentric sun is now in save area of barycentric earth.
+       * (pedp->xreturn = swed.pldat[SEI_EARTH].xreturn).
+       * in case a barycentric earth computation follows for the same
+       * date, the planetary functions will return the barycentric
+       * SUN unless we force a new computation of pedp->xreturn.
+       * this can be done by initializing the save of iflag.
+       */
+      pedp.xflgs = -1;
     /******************************************
      * mercury - pluto                        *
      ******************************************/
@@ -2727,7 +3536,38 @@ public class SwissEph
           serr.setLength(0);
         }
         /* asteroid */
-        return swecalc_error(x);
+        retc = sweph(tjd, ipli_ast, ifno, iflag, psdp.x, SwephData.DO_SAVE,
+                     null, serr);
+        if (retc == SweConst.ERR || retc == SwephData.NOT_AVAILABLE) {
+          return swecalc_error(x);
+        }
+        retc = app_pos_etc_plan(ipli_ast, iflag, serr);
+        if (retc == SweConst.ERR) {
+          return swecalc_error(x);
+        }
+        /* app_pos_etc_plan() might have failed, if t(light-time)
+         * is beyond ephemeris range. in this case redo with Moshier
+         */
+        if (retc == SwephData.NOT_AVAILABLE ||
+            retc == SwephData.BEYOND_EPH_LIMITS) {
+          if (epheflag != SweConst.SEFLG_MOSEPH) {
+            iflag = (iflag & ~SweConst.SEFLG_EPHMASK) | SweConst.SEFLG_MOSEPH;
+            epheflag = SweConst.SEFLG_MOSEPH;
+            if (serr != null && serr.length() + 30 < SwissData.AS_MAXCH) {
+              serr.append("\nusing Moshier eph.; ");
+            }
+//          goto do_asteroid;
+            continue;
+          } else
+            return swecalc_error(x);
+        }
+        break;
+      }
+      /* add warnings from earth/sun computation */
+      if (serr != null && serr.length()==0 && serr2.length()!=0) {
+        serr.setLength(0);
+        serr2=serr2.substring(0,SMath.min(serr2.length(),SwissData.AS_MAXCH-5));
+        serr.append("sun: "+serr2);
       }
     /***********************************************
      * fictitious planets                          *
@@ -2840,6 +3680,17 @@ public class SwissEph
     }
     /* if sweph file not found, switch to moshier */
     if (retc == SwephData.NOT_AVAILABLE) {
+      if (tjd > SwephData.MOSHLUEPH_START && tjd < SwephData.MOSHLUEPH_END) {
+        iflag = (iflag & ~SweConst.SEFLG_SWIEPH) | SweConst.SEFLG_MOSEPH;
+        if (serr != null && serr.length() + 30 < SwissData.AS_MAXCH) {
+          serr.append(" \nusing Moshier eph.; ");
+        }
+//        goto moshier_moon;
+        retc = moshier_moon(tjd, SwephData.DO_SAVE, null, serr);
+        if (retc == SweConst.ERR) {
+          return SweConst.ERR;
+        }
+      } else
       return SweConst.ERR;
     }
     return SweConst.OK;
@@ -2864,7 +3715,7 @@ public class SwissEph
    *
    * tjd          = julian day
    * ipli         = body number
-   * epheflag     = which ephemeris? SWISSEPH, Moshier?
+   * epheflag     = which ephemeris? JPL, SWISSEPH, Moshier?
    * iflag        = other flags
    *
    * the geocentric apparent position of ipli (or whatever has
@@ -2880,7 +3731,71 @@ public class SwissEph
     int retc;
     boolean calc_swieph=false;
     boolean calc_moshier=false;
-    if (calc_swieph) {
+    if (epheflag == SweConst.SEFLG_JPLEPH) {
+      try {
+        retc = jplplan(tjd, ipli, iflag, SwephData.DO_SAVE,
+                       null, null, null,serr);
+      } catch (SwissephException swe) {
+        retc = swe.getRC();
+        /* read error or corrupt file */
+        if (retc == SweConst.ERR) {
+          return SweConst.ERR;
+        }
+      }
+      /* jpl ephemeris not on disk or date beyond ephemeris range */
+      if (retc == SwephData.NOT_AVAILABLE) {
+        iflag = (iflag & ~SweConst.SEFLG_JPLEPH) | SweConst.SEFLG_SWIEPH;
+        if (serr != null && serr.length() + 30 < SwissData.AS_MAXCH) {
+          serr.append(" \ntrying Swiss Eph; ");
+        }
+        calc_swieph=true;
+//        goto sweph_planet;
+      } else if (retc == SwephData.BEYOND_EPH_LIMITS) {
+        if (tjd > SwephData.MOSHPLEPH_START && tjd < SwephData.MOSHPLEPH_END) {
+          iflag = (iflag & ~SweConst.SEFLG_JPLEPH) | SweConst.SEFLG_MOSEPH;
+          if (serr != null && serr.length() + 30 < SwissData.AS_MAXCH) {
+            serr.append(" \nusing Moshier Eph; ");
+          }
+          calc_moshier=true;
+//          goto moshier_planet;
+        } else {
+          return SweConst.ERR;
+        }
+      }
+      if (!calc_swieph && !calc_moshier) {
+        /* geocentric, lighttime etc. */
+        if (ipli == SwephData.SEI_SUN) {
+          retc = app_pos_etc_sun(iflag, serr)/**/;
+        } else {
+          retc = app_pos_etc_plan(ipli, iflag, serr);
+        }
+        if (retc == SweConst.ERR) {
+          return SweConst.ERR;
+        }
+        /* t for light-time beyond ephemeris range */
+        if (retc == SwephData.NOT_AVAILABLE) {
+          iflag = (iflag & ~SweConst.SEFLG_JPLEPH) | SweConst.SEFLG_SWIEPH;
+          if (serr != null && serr.length() + 30 < SwissData.AS_MAXCH) {
+            serr.append(" \ntrying Swiss Eph; ");
+          }
+          calc_swieph=true;
+//          goto sweph_planet;
+        } else if (retc == SwephData.BEYOND_EPH_LIMITS) {
+          if (tjd > SwephData.MOSHPLEPH_START &&
+              tjd < SwephData.MOSHPLEPH_END) {
+            iflag = (iflag & ~SweConst.SEFLG_JPLEPH) | SweConst.SEFLG_MOSEPH;
+            if (serr != null && serr.length() + 30 < SwissData.AS_MAXCH) {
+              serr.append(" \nusing Moshier Eph; ");
+            }
+            calc_moshier=true;
+//            goto moshier_planet;
+          } else {
+            return SweConst.ERR;
+          }
+        }
+      }
+    } // SweConst.SEFLG_JPLEPH
+    if (epheflag == SweConst.SEFLG_SWIEPH || calc_swieph) {
 //      sweph_planet:
       /* compute barycentric planet (+ earth, sun, moon) */
       retc = sweplan(tjd, ipli, SwephData.SEI_FILE_PLANET, iflag, SwephData.DO_SAVE,
@@ -2890,7 +3805,16 @@ public class SwissEph
       }
       /* if sweph file not found, switch to moshier */
       if (retc == SwephData.NOT_AVAILABLE) {
-        return SweConst.ERR;
+        if (tjd > SwephData.MOSHPLEPH_START && tjd < SwephData.MOSHPLEPH_END) {
+          iflag = (iflag & ~SweConst.SEFLG_SWIEPH) | SweConst.SEFLG_MOSEPH;
+          if (serr != null && serr.length() + 30 < SwissData.AS_MAXCH) {
+            serr.append(" \nusing Moshier eph.; ");
+          }
+            calc_moshier=true;
+//          goto moshier_planet;
+        } else {
+          return SweConst.ERR;
+        }
       }
       if (!calc_moshier) {
         /* geocentric, lighttime etc. */
@@ -2906,7 +3830,7 @@ public class SwissEph
         if (retc == SwephData.NOT_AVAILABLE) {
           if (tjd > SwephData.MOSHPLEPH_START &&
               tjd < SwephData.MOSHPLEPH_END) {
-          iflag = (iflag & SweConst.SEFLG_MOSEPH);
+          iflag = (iflag & ~SweConst.SEFLG_SWIEPH) | SweConst.SEFLG_MOSEPH;
             if (serr != null && serr.length() + 30 < SwissData.AS_MAXCH) {
               serr.append(" \nusing Moshier eph.; ");
             }
@@ -2941,12 +3865,12 @@ public class SwissEph
    * it again, if it has been computed before.
    * In barycentric equatorial position of the J2000 equinox.
    * The earth's position is computed as well. With SWISSEPH
-   * ephemeris the barycentric sun is computed, too.
+   * and JPL ephemeris the barycentric sun is computed, too.
    * With Moshier, the moon is returned, as well.
    *
    * tjd          = julian day
    * ipli         = body number
-   * epheflag     = which ephemeris? SWISSEPH, Moshier?
+   * epheflag     = which ephemeris? JPL, SWISSEPH, Moshier?
    * iflag        = other flags
    * xp, xe, xs, and xm are the pointers, where the program
    * either finds or stores (if not found) the barycentric
@@ -2967,7 +3891,27 @@ public class SwissEph
     int retc;
     boolean calc_moshier=false;
     boolean calc_swieph=false;
-    if (calc_swieph) {
+    if (epheflag == SweConst.SEFLG_JPLEPH) {
+      try {
+        retc = jplplan(tjd, ipli, iflag, do_save, xp, xe, xs, serr);
+      } catch (SwissephException swe) {
+        retc = swe.getRC();
+        /* read error or corrupt file */
+        if (retc == SweConst.ERR || retc == SwephData.BEYOND_EPH_LIMITS) {
+          return retc;
+        }
+      }
+      /* jpl ephemeris not on disk or date beyond ephemeris range */
+      if (retc == SwephData.NOT_AVAILABLE) {
+        iflag = (iflag & ~SweConst.SEFLG_JPLEPH) | SweConst.SEFLG_SWIEPH;
+        if (serr != null && serr.length() + 30 < SwissData.AS_MAXCH) {
+          serr.append(" \ntrying Swiss Eph; ");
+        }
+        calc_swieph=true;
+//        goto sweph_planet;
+      }
+    }
+    if (epheflag == SweConst.SEFLG_SWIEPH || calc_swieph) {
 //      sweph_planet:
       /* compute barycentric planet (+ earth, sun, moon) */
       retc = sweplan(tjd, ipli, SwephData.SEI_FILE_PLANET, iflag, do_save,
@@ -2988,6 +3932,56 @@ public class SwissEph
     return SweConst.OK;
   }
 
+  /* SWISSEPH
+   * this routine computes heliocentric cartesian equatorial coordinates
+   * of equinox 2000 of
+   * geocentric moon
+   *
+   * tjd          julian date
+   * iflag        flag
+   * do_save      save J2000 position in save area pdp->x ?
+   * xp           array of 6 doubles for lunar position and speed
+   * serr         error string
+   */
+  int swemoon(double tjd, int iflag, boolean do_save, double xpret[],
+              StringBuffer serr) {
+    int i, retc;
+    PlanData pdp = swed.pldat[SwephData.SEI_MOON];
+    int speedf1, speedf2;
+    double xx[]=new double[6], xp[];
+    if (do_save) {
+      xp = pdp.x;
+    } else {
+      xp = xx;
+    }
+    /* if planet has already been computed for this date, return
+     * if speed flag has been turned on, recompute planet */
+    speedf1 = pdp.xflgs & SweConst.SEFLG_SPEED;
+    speedf2 = iflag & SweConst.SEFLG_SPEED;
+    if (tjd == pdp.teval
+        && pdp.iephe == SweConst.SEFLG_SWIEPH
+        && ((speedf2==0) || (speedf1!=0))) {
+      xp = pdp.x;
+    } else {
+      /* call sweph for moon */
+      retc = sweph(tjd, SwephData.SEI_MOON, SwephData.SEI_FILE_MOON, iflag,
+                   null, do_save, xp, serr);
+      if (retc != SweConst.OK) {
+        return(retc);
+      }
+      if (do_save) {
+        pdp.teval = tjd;
+        pdp.xflgs = -1;
+        pdp.iephe = SweConst.SEFLG_SWIEPH;
+      }
+    }
+    if (xpret != null) {
+      for (i = 0; i <= 5; i++) {
+        xpret[i] = xp[i];
+      }
+    }
+    return SweConst.OK;
+  }
 
   /* SWISSEPH
    * this function computes
@@ -3061,11 +4055,21 @@ public class SwissEph
     /* barycentric sun */
     if (do_sunbary) {
       speedf1 = psbdp.xflgs & SweConst.SEFLG_SPEED;
+      /* if planet has already been computed for this date, return
+       * if speed flag has been turned on, recompute planet */
+      if (tjd == psbdp.teval
+          && psbdp.iephe == SweConst.SEFLG_SWIEPH
+          && ((speedf2==0) || (speedf1!=0))) {
+        for (i = 0; i <= 5; i++) {
+          xps[i] = psbdp.x[i];
+        }
+      } else {
         retc = sweph(tjd, SwephData.SEI_SUNBARY, SwephData.SEI_FILE_PLANET, iflag,
                      null, do_save, xps, serr);/**/
         if (retc != SweConst.OK) {
           return(retc);
         }
+      }
       if (xpsret != null) {
         for (i = 0; i <= 5; i++) {
           xpsret[i] = xps[i];
@@ -3075,15 +4079,29 @@ public class SwissEph
     /* moon */
     if (do_moon) {
       speedf1 = pmdp.xflgs & SweConst.SEFLG_SPEED;
+      if (tjd == pmdp.teval
+          && pmdp.iephe == SweConst.SEFLG_SWIEPH
+          && ((speedf2==0) || (speedf1!=0))) {
+        for (i = 0; i <= 5; i++) {
+          xpm[i] = pmdp.x[i];
+        }
+      } else {
         retc = sweph(tjd, SwephData.SEI_MOON, SwephData.SEI_FILE_MOON, iflag, null,
                      do_save, xpm, serr);
         if (retc == SweConst.ERR) {
           return(retc);
         }
+        /* if moon file doesn't exist, take moshier moon */
+        if (swed.fidat[SwephData.SEI_FILE_MOON].fptr == null) {
+          if (serr != null && serr.length() + 35 < SwissData.AS_MAXCH) {
+            serr.append(" \nusing Moshier eph. for moon; ");
+          }
           retc = sm.swi_moshmoon(tjd, do_save, xpm, serr);
           if (retc != SweConst.OK) {
             return(retc);
           }
+        }
+      }
       if (xpmret != null) {
         for (i = 0; i <= 5; i++) {
           xpmret[i] = xpm[i];
@@ -3093,6 +4111,13 @@ public class SwissEph
     /* barycentric earth */
     if (do_earth) {
       speedf1 = pebdp.xflgs & SweConst.SEFLG_SPEED;
+      if (tjd == pebdp.teval
+          && pebdp.iephe == SweConst.SEFLG_SWIEPH
+          && ((speedf2==0) || (speedf1!=0))) {
+        for (i = 0; i <= 5; i++) {
+          xpe[i] = pebdp.x[i];
+        }
+      } else {
         retc = sweph(tjd, SwephData.SEI_EMB, SwephData.SEI_FILE_PLANET, iflag, null,
                      do_save, xpe, serr);
         if (retc != SweConst.OK) {
@@ -3109,6 +4134,7 @@ public class SwissEph
         if (xpe == pebdp.x || ((iflag & SweConst.SEFLG_SPEED)!=0)) {
           embofs(xpe, 3, xpm, 3);
         }
+      }
       if (xperet != null) {
         for (i = 0; i <= 5; i++) {
           xperet[i] = xpe[i];
@@ -3130,6 +4156,14 @@ public class SwissEph
     } else {
       /* planet */
       speedf1 = pdp.xflgs & SweConst.SEFLG_SPEED;
+      if (tjd == pdp.teval
+          && pdp.iephe == SweConst.SEFLG_SWIEPH
+          && ((speedf2==0) || (speedf1!=0))) {
+        for (i = 0; i <= 5; i++) {
+          xp[i] = pdp.x[i];
+        }
+        return(SweConst.OK);
+      } else {
         retc = sweph(tjd, ipli, ifno, iflag, null, do_save, xp, serr);
         if (retc != SweConst.OK) {
           return(retc);
@@ -3146,6 +4180,7 @@ public class SwissEph
             }
           }
         }
+      }
     }
     if (xpret != null) {
       for (i = 0; i <= 5; i++) {
@@ -3155,6 +4190,170 @@ public class SwissEph
     return SweConst.OK;
   }
 
+  /* jpl ephemeris.
+   * this function computes
+   * 1. a barycentric planet position
+   * plus, under certain conditions,
+   * 2. the barycentric sun,
+   * 3. the barycentric earth,
+   * in barycentric cartesian equatorial coordinates J2000.
+  
+   * tjd          julian day
+   * ipli         sweph internal planet number
+   * do_save      write new positions in save area
+   * xp           array of 6 doubles for planet's position and speed vectors
+   * xpe                                 earth's
+   * xps                                 sun's
+   * serr         pointer to error string
+   *
+   * xp - xps can be NULL. if do_save is TRUE, all of them can be NULL.
+   * the positions will be written into the save area (swed.pldat[ipli].x)
+   */
+  int jplplan(double tjd, int ipli, int iflag, boolean do_save,
+              double xpret[], double xperet[], double xpsret[],
+              StringBuffer serr) throws SwissephException {
+    int i, retc;
+    boolean do_earth = false, do_sunbary = false;
+    double ss[]=new double[3];
+    double xxp[]=new double[6], xxe[]=new double[6], xxs[]=new double[6];
+    double xp[], xpe[], xps[];
+    int ictr = SwephJPL.J_SBARY;
+    PlanData pdp = swed.pldat[ipli];
+    PlanData pedp = swed.pldat[SwephData.SEI_EARTH];
+    PlanData psdp = swed.pldat[SwephData.SEI_SUNBARY];
+    /* we assume Teph ~= TDB ~= TT. The maximum error is < 0.002 sec, 
+     * corresponding to an ephemeris error < 0.001 arcsec for the moon */
+    /* double tjd_tdb, T;
+     T = (tjd - 2451545.0)/36525.0;
+     tjd_tdb = tjd + (0.001657 * sin(628.3076 * T + 6.2401)
+                + 0.000022 * sin(575.3385 * T + 4.2970)
+                + 0.000014 * sin(1256.6152 * T + 6.1969)) / 8640.0;*/
+    if (do_save) {
+      xp = pdp.x;
+      xpe = pedp.x;
+      xps = psdp.x;
+    } else {
+      xp = xxp;
+      xpe = xxe;
+      xps = xxs;
+    }
+    if (do_save || ipli == SwephData.SEI_EARTH || xperet != null
+      || (ipli == SwephData.SEI_MOON)) {
+           /* && (iflag & (SweConst.SEFLG_HELCTR | SweConst.SEFLG_BARYCTR |
+                   SweConst.SEFLG_NOABERR))!=0)) */
+      do_earth = true;
+    }
+    if (do_save || ipli == SwephData.SEI_SUNBARY || xpsret != null
+      || (ipli == SwephData.SEI_MOON)) {
+                          /* && (iflag & (SEFLG_HELCTR | SEFLG_NOABERR)))) */
+      do_sunbary = true;
+    }
+    if (ipli == SwephData.SEI_MOON) {
+      ictr = SwephJPL.J_EARTH;
+    }
+    /* open ephemeris, if still closed */
+    if (!swed.jpl_file_is_open) {
+      retc = open_jpl_file(ss, swed.jplfnam, swed.ephepath, serr);
+      if (retc != SweConst.OK) {
+        throw new SwissephException(tjd, SwissephException.FILE_OPEN_FAILED,
+            retc, serr);
+      }
+    }
+    if (do_earth) {
+      /* barycentric earth */
+      if (tjd != pedp.teval || tjd == 0) {
+        try {
+          retc = sj.swi_pleph(tjd, SwephJPL.J_EARTH, SwephJPL.J_SBARY, xpe, serr);
+        } catch (SwissephException se) {
+          retc = se.getRC();
+        }
+        if (retc != SweConst.OK) {
+          sj.swi_close_jpl_file();
+          swed.jpl_file_is_open = false;
+          return retc;
+        }
+        if (do_save) {
+          pedp.teval = tjd;
+          pedp.xflgs = -1;       /* new light-time etc. required */
+          pedp.iephe = SweConst.SEFLG_JPLEPH;
+        }
+      } else {
+        xpe = pedp.x;
+      }
+      if (xperet != null) {
+        for (i = 0; i <= 5; i++) {
+          xperet[i] = xpe[i];
+        }
+      }
+  
+    }
+    if (do_sunbary) {
+      /* barycentric sun */
+      if (tjd != psdp.teval || tjd == 0) {
+        try {
+          retc = sj.swi_pleph(tjd, SwephJPL.J_SUN, SwephJPL.J_SBARY, xps, serr);
+        } catch (SwissephException se) {
+          retc = se.getRC();
+        }
+        if (retc != SweConst.OK) {
+          sj.swi_close_jpl_file();
+          swed.jpl_file_is_open = false;
+          return retc;
+        }
+        if (do_save) {
+          psdp.teval = tjd;
+          psdp.xflgs = -1;
+          psdp.iephe = SweConst.SEFLG_JPLEPH;
+        }
+      } else {
+        xps = psdp.x;
+      }
+      if (xpsret != null) {
+        for (i = 0; i <= 5; i++) {
+          xpsret[i] = xps[i];
+        }
+      }
+    }
+    /* earth is wanted */
+    if (ipli == SwephData.SEI_EARTH) {
+      for (i = 0; i <= 5; i++) {
+        xp[i] = xpe[i];
+      }
+    /* sunbary is wanted */
+    } if (ipli == SwephData.SEI_SUNBARY) {
+      for (i = 0; i <= 5; i++) {
+        xp[i] = xps[i];
+      }
+    /* other planet */
+    } else {
+      /* if planet already computed */
+      if (tjd == pdp.teval && pdp.iephe == SweConst.SEFLG_JPLEPH) {
+        xp = pdp.x;
+      } else {
+        try {
+          retc = sj.swi_pleph(tjd, SwephData.pnoint2jpl[ipli], ictr, xp, serr);
+        } catch (SwissephException se) {
+          retc = se.getRC();
+        }
+        if (retc != SweConst.OK) {
+          sj.swi_close_jpl_file();
+          swed.jpl_file_is_open = false;
+          return retc;
+        }
+        if (do_save) {
+          pdp.teval = tjd;
+          pdp.xflgs = -1;
+          pdp.iephe = SweConst.SEFLG_JPLEPH;
+        }
+      }
+    }
+    if (xpret != null) {
+      for (i = 0; i <= 5; i++) {
+        xpret[i] = xp[i];
+      }
+    }
+    return (SweConst.OK);
+  }
 
   /*
    * this function looks for an ephemeris file,
@@ -3199,7 +4398,376 @@ public class SwissEph
      * if speed flag has been turned on, recompute planet */
     speedf1 = pdp.xflgs & SweConst.SEFLG_SPEED;
     speedf2 = iflag & SweConst.SEFLG_SPEED;
-    return(SwephData.NOT_AVAILABLE);
+    if (tjd == pdp.teval
+        && pdp.iephe == SweConst.SEFLG_SWIEPH
+        && ((speedf2==0) || (speedf1!=0))
+        && ipl < SwephData.SEI_ANYBODY) {
+      if (xpret != null) {
+        for (i = 0; i <= 5; i++) {
+          xpret[i] = pdp.x[i];
+        }
+      }
+      return SweConst.OK;
+    }
+    /******************************
+     * get correct ephemeris file *
+     ******************************/
+    if (fdp.fptr != null) {
+      /* if tjd is beyond file range, close old file.
+       * if new asteroid, close old file. */
+      if (tjd < fdp.tfstart || tjd > fdp.tfend
+        || (ipl == SwephData.SEI_ANYBODY && ipli != pdp.ibdy)) {
+        try {
+          fdp.fptr.close();
+        } catch (java.io.IOException e) {
+// NBT
+        }
+        fdp.fptr = null;
+//        if (pdp.refep != null) {
+          pdp.refep = null;
+//        }
+//        if (pdp.segp != null) {
+          pdp.segp = null;
+//        }
+      }
+    }
+    /* if sweph file not open, find and open it */
+    if (fdp.fptr == null) {
+fname="";
+      try {
+        fname=sl.swi_gen_filename(tjd, ipli);
+      } catch (Exception e) {
+System.err.println(e);
+      }
+      subdirnam=fname;
+      if (subdirnam.lastIndexOf(SwissData.DIR_GLUE)>0) {
+        subdirnam=subdirnam.substring(0,subdirnam.indexOf(SwissData.DIR_GLUE));
+        subdirlen=subdirnam.length();
+      } else {
+        subdirlen=0;
+      }
+      s=fname;
+
+// again:
+      while (fdp.fptr==null) {
+        try {
+          fdp.fptr=swi_fopen(ifno,s,swed.ephepath, serr);
+        } catch (SwissephException se) {
+        }
+        if (fdp.fptr == null) { // &&
+//            (fdp.fptr.fp == null || fdp.fptr.sk == null)) {
+          /*
+           * if it is a numbered asteroid file, try also for short files (..s.se1)
+           * On the second try, the inserted 's' will be seen and not tried again.
+           */
+          if (ipli > SweConst.SE_AST_OFFSET) {
+            if (s.indexOf("s.")<0) {
+              s=s.substring(0,s.indexOf("."))+"s."+SwephData.SE_FILE_SUFFIX;
+              // goto again
+              continue;
+            }
+            /*
+             * if we still have 'ast0' etc. in front of the filename,
+             * we remove it now, remove the 's' also,
+             * and try in the main ephemeris directory instead of the
+             * asteroid subdirectory.
+             */
+            s=s.substring(0,s.indexOf("s."))+s.substring(s.indexOf("s.")+1);
+            if (subdirlen>0 &&
+                s.startsWith(subdirnam.substring(
+                                0,SMath.min(subdirnam.length(),subdirlen)))) {
+              s=s.substring(subdirlen+1);
+              // goto again
+              continue;
+            }
+          }
+          return(SwephData.NOT_AVAILABLE);
+        }
+      }
+
+      /* during the search error messages may have been built, delete them */
+      if (serr != null) {
+        serr.setLength(0);
+      }
+      retc = swed.fidat[ifno].read_const(ifno, serr, swed);
+      if (retc != SweConst.OK) {
+        return(retc);
+      }
+    }
+    /* if first ephemeris file (J-3000), it might start a mars period
+     * after -3000. if last ephemeris file (J3000), it might end a
+     * 4000-day-period before 3000. */
+    if (tjd < fdp.tfstart || tjd > fdp.tfend) {
+      if (serr != null) {
+        if (tjd < fdp.tfstart) {
+          s="jd "+tjd+" < Swiss Eph. lower limit "+fdp.tfstart+";";
+        } else {
+          s="jd "+tjd+" > Swiss Eph. upper limit "+fdp.tfend+";";
+        }
+        if (serr.length()+s.length() < SwissData.AS_MAXCH) {
+          serr.append(s);
+        }
+      }
+      return(SwephData.NOT_AVAILABLE);
+    }
+    /******************************
+     * get planet's position
+     ******************************/
+    /* get new segment, if necessary */
+    if (pdp.segp == null || tjd < pdp.tseg0 || tjd > pdp.tseg1) {
+      retc = swed.fidat[ifno].get_new_segment(swed, tjd, ipl, ifno, serr);
+      if (retc != SweConst.OK) {
+        return(retc);
+      }
+      /* rotate cheby coeffs back to equatorial system.
+       * if necessary, add reference orbit. */
+      if ((pdp.iflg & SwephData.SEI_FLG_ROTATE)!=0) {
+        rot_back(ipl); /**/
+      } else {
+        pdp.neval = pdp.ncoe;
+      }
+    }
+    /* evaluate chebyshew polynomial for tjd */
+    t = (tjd - pdp.tseg0) / pdp.dseg;
+    t = t * 2 - 1;
+    /* speed is needed, if
+     * 1. true position is being computed before applying light-time etc.
+     *    this is the position saved in pdp->x.
+     *    in this case, speed is needed for light-time correction.
+     * 2. the speed flag has been specified.
+     */
+    need_speed = (do_save || ((iflag & SweConst.SEFLG_SPEED)!=0));
+    for (i = 0; i <= 2; i++) {
+      xp[i]  = sl.swi_echeb (t, pdp.segp, i*pdp.ncoe, pdp.neval);
+      if (need_speed) {
+        xp[i+3] = sl.swi_edcheb(t, pdp.segp, i*pdp.ncoe, pdp.neval) / pdp.dseg * 2;
+      } else
+        xp[i+3] = 0;      /* von Alois als billiger fix, evtl. illegal */
+    }
+    /* if planet wanted is barycentric sun and must be computed
+     * from heliocentric earth and barycentric earth: the
+     * computation above gives heliocentric earth, therefore we
+     * have to compute barycentric earth and subtract heliocentric
+     * earth from it. this may be necessary with calls from
+     * sweplan() and from app_pos_etc_sun() (light-time). */
+    if (ipl == SwephData.SEI_SUNBARY &&
+        (pdp.iflg & SwephData.SEI_FLG_EMBHEL)!=0) {
+      /* sweph() calls sweph() !!! for EMB.
+       * Attention: a new calculation must be forced in any case.
+       * Otherwise EARTH (instead of EMB) will possibly taken from
+       * save area.
+       * to force new computation, set pedp->teval = 0 and restore it
+       * after call of sweph(EMB).
+       */
+      tsv = pedp.teval;
+      pedp.teval = 0;
+      retc = sweph(tjd, SwephData.SEI_EMB, ifno, iflag | SweConst.SEFLG_SPEED,
+                   null, SwephData.NO_SAVE, xemb, serr);
+      if (retc != SweConst.OK) {
+        return(retc);
+      }
+      pedp.teval = tsv;
+      for (i = 0; i <= 2; i++) {
+        xp[i] = xemb[i] - xp[i];
+      }
+      if (need_speed) {
+        for (i = 3; i <= 5; i++) {
+          xp[i] = xemb[i] - xp[i];
+        }
+      }
+    }
+    /* asteroids are heliocentric.
+     * if JPL or SWISSEPH, convert to barycentric */
+    if ((iflag & SweConst.SEFLG_JPLEPH)!=0 ||
+        (iflag & SweConst.SEFLG_SWIEPH)!=0) {
+      if (ipl >= SwephData.SEI_ANYBODY) {
+        for (i = 0; i <= 2; i++) {
+          xp[i] += xsunb[i];
+        }
+        if (need_speed) {
+          for (i = 3; i <= 5; i++) {
+            xp[i] += xsunb[i];
+          }
+        }
+      }
+    }
+    if (do_save) {
+      pdp.teval = tjd;
+      pdp.xflgs = -1;    /* do new computation of light-time etc. */
+      if (ifno == SwephData.SEI_FILE_PLANET ||
+          ifno == SwephData.SEI_FILE_MOON) {
+        pdp.iephe = SweConst.SEFLG_SWIEPH;/**/
+      } else {
+        pdp.iephe = psdp.iephe;
+      }
+    }
+    if (xpret != null) {
+      for (i = 0; i <= 5; i++) {
+        xpret[i] = xp[i];
+      }
+    }
+    return SweConst.OK;
+  }
+
+  /*
+   * Alois 2.12.98: inserted error message generation for file not found
+   */
+  FilePtr swi_fopen(int ifno, String fname, String ephepath,
+                    StringBuffer serr) throws SwissephException {
+////#ifdef TRACE0
+//    Trace.level++;
+//    Trace.log("SwissEph.swi_fopen(int, String <" + fname + ">, String, StringBuffer)");
+////#ifdef TRACE1
+//    Trace.log("   ifno: " + ifno + "\n    fname: " + fname + "\n    ephepath: " + ephepath + "\n    serr: " + serr);
+////#endif /* TRACE1 */
+////#endif /* TRACE0 */
+    int np, i;
+    java.io.RandomAccessFile fp = null;
+    String fnamp;
+    String[] cpos=new String[20];
+    String s, s1;
+    // if (ifno >= 0) ...: Semantik in den try - catch Block verlagert!!!
+    s1=ephepath;
+    np = sl.swi_cutstr(s1, SwissData.PATH_SEPARATOR, cpos, 20);
+    for (i = 0; i < np; i++) {
+      s=cpos[i];
+      if (s.equals(".")) { /* current directory */
+        s = "";
+      } else {
+        if (!s.endsWith(SwissData.DIR_GLUE) && !s.equals("")) {
+          s+=SwissData.DIR_GLUE;
+        }
+      }
+      if (s.length() + fname.length() < SwissData.AS_MAXCH) {
+        s += fname;
+      } else {
+        if (serr != null) {
+          serr.setLength(0);
+          serr.append("error: file path and name must be shorter than "+
+                       SwissData.AS_MAXCH+".");
+        throw new SwissephException(1./0., SwissephException.INVALID_FILE_NAME,
+            SweConst.ERR, serr);
+        }
+      }
+      fnamp = s;
+      try {
+        fp = new java.io.RandomAccessFile(fnamp, SwissData.BFILE_R_ACCESS);
+// In Java only????:
+        if (ifno >= 0) {
+          swed.fidat[ifno].fnam=fnamp;
+        }
+        FilePtr sfp = new FilePtr(fp,null,null,null,fnamp,-1,httpBufSize);
+////#ifdef TRACE0
+//        Trace.level--;
+////#endif /* TRACE0 */
+        return sfp;
+      } catch (java.io.IOException ex) {
+        // Maybe it is an URL...
+        FilePtr f=tryFileAsURL(s+"/"+fname, ifno);
+        if (f!=null) {
+////#ifdef TRACE0
+//        Trace.level--;
+////#endif /* TRACE0 */
+          return f;
+        }
+      } catch (SecurityException ex) {
+        // Probably an applet, we try fnamp as an URL:
+        FilePtr f=tryFileAsURL(s+"/"+fname, ifno);
+        if (f!=null) {
+////#ifdef TRACE0
+//        Trace.level--;
+////#endif /* TRACE0 */
+          return f;
+        }
+      }
+    }
+    s="SwissEph file '"+fname+"' not found in the paths of: ";
+    for (int n=0;n<cpos.length;n++) {
+      if (cpos[n]!=null && !"".equals(cpos[n])) { s+="'"+cpos[n]+"', "; }
+    }
+    if (serr != null) {
+      serr.setLength(0);
+      serr.append(s);
+    }
+////#ifdef TRACE0
+//    Trace.level--;
+////#endif /* TRACE0 */
+    throw new SwissephException(1./0., SwissephException.FILE_NOT_FOUND,
+        SwephData.NOT_AVAILABLE, serr);
+  }
+
+  private FilePtr tryFileAsURL(String fnamp, int ifno) {
+////#ifdef TRACE0
+//    Trace.level++;
+//    Trace.log("SwissEph.tryFileAsURL(String, int)");
+////#ifdef TRACE1
+//    Trace.log("   fnamp: " + fnamp + "\n    ifno: " + ifno);
+////#endif /* TRACE1 */
+////#endif /* TRACE0 */
+    if (!fnamp.startsWith("http://")) {
+        return null;
+    }
+    Socket sk=null;
+    try {
+      URL u=new URL(fnamp);
+      sk=new Socket(u.getHost(),(u.getPort()<0?80:u.getPort()));
+      String sht="HEAD "+fnamp+" HTTP/1.1\r\n"+
+                 "User-Agent: "+FilePtr.useragent+"\r\n"+
+                 "Host: "+u.getHost()+":"+(u.getPort()<0?80:u.getPort())+
+                                                                  "\r\n\r\n";
+      sk.setSoTimeout(5000);
+      InputStream is=sk.getInputStream();
+      BufferedOutputStream os=new BufferedOutputStream(sk.getOutputStream());
+      for(int n=0; n<sht.length(); n++) {
+        os.write((byte)sht.charAt(n));
+      }
+      os.flush();
+      String sret=""+(char)is.read();
+      while (is.available()>0) {
+        sret+=(char)is.read();
+      }
+      int idx=sret.indexOf("Content-Length:");
+      if (idx < 0) {
+        sk.close();
+////#ifdef TRACE0
+//        Trace.level--;
+////#endif /* TRACE0 */
+        return null;
+      }
+      // We need to query ranges, otherwise it will not make much sense...
+      if (sret.indexOf("Accept-Ranges: none")>=0) {
+        System.err.println("Server does not accept HTTP range requests. "+
+                           "Aborting!");
+        sk.close();
+////#ifdef TRACE0
+//        Trace.level--;
+////#endif /* TRACE0 */
+        return null;
+      }
+      sret=sret.substring(idx+"Content-Length:".length());
+      sret=sret.substring(0,sret.indexOf("\n")).trim();
+// We might want to check for a minimum length?
+      long len=Long.parseLong(sret);
+      if (ifno >= 0) {
+        swed.fidat[ifno].fnam=fnamp;
+      }
+////#ifdef TRACE0
+//      Trace.level--;
+////#endif /* TRACE0 */
+      return new FilePtr(null,sk,is,os,fnamp,len,httpBufSize);
+    } catch (MalformedURLException m) {
+    } catch (IOException ie) {
+    } catch (NumberFormatException nf) {
+      // Why this? Should not be able to happen...
+    } catch (SecurityException se) {
+    }
+    try { sk.close(); }
+    catch (IOException e) { }
+    catch (NullPointerException np) { }
+////#ifdef TRACE0
+//    Trace.level--;
+////#endif /* TRACE0 */
+    return null;
   }
 
   /* converts planets from barycentric to geocentric,
@@ -3212,6 +4780,7 @@ public class SwissEph
    */
   int app_pos_etc_plan(int ipli, int iflag, StringBuffer serr) {
     int i, j, niter, retc = SweConst.OK;
+    int ipl;
     int ifno, ibody;
     int flg1, flg2;
     double xx[]=new double[6], dx[]=new double[3], dt, t, dtsave_for_defl;
@@ -3257,9 +4826,12 @@ public class SwissEph
     }
     /* if heliocentric position is wanted */
     if ((iflag & SweConst.SEFLG_HELCTR)!=0) {
+      if (pdp.iephe == SweConst.SEFLG_JPLEPH ||
+          pdp.iephe == SweConst.SEFLG_SWIEPH) {
         for (i = 0; i <= 5; i++) {
           xx[i] -= swed.pldat[SwephData.SEI_SUNBARY].x[i];
         }
+      }
     }
     /************************************
      * observer: geocenter or topocenter
@@ -3292,7 +4864,12 @@ public class SwissEph
      *******************************/
     if ((iflag & SweConst.SEFLG_TRUEPOS)==0) {
       /* number of iterations - 1 */
-      niter = 0;
+      if (pdp.iephe == SweConst.SEFLG_JPLEPH ||
+          pdp.iephe == SweConst.SEFLG_SWIEPH) {
+        niter = 1;
+      } else {      /* SEFLG_MOSEPH or planet from osculating elements */
+        niter = 0;
+      }
       if ((iflag & SweConst.SEFLG_SPEED)!=0) {
         /*
          * Apparent speed is influenced by the fact that dt changes with
@@ -3351,6 +4928,71 @@ public class SwissEph
       }
       /* new position, accounting for light-time (accurate) */
       switch(epheflag) {
+        case SweConst.SEFLG_JPLEPH:
+          if (ibody >= SwephData.IS_ANY_BODY)
+            ipl = -1; /* will not be used */ /*pnoint2jpl[SEI_ANYBODY];*/
+          else
+            ipl = SwephData.pnoint2jpl[ipli];
+          if (ibody == SwephData.IS_PLANET) {
+            try {
+              retc = sj.swi_pleph(t, ipl, SwephJPL.J_SBARY, xx, serr);
+            } catch (SwissephException se) {
+              retc = se.getRC();
+            }
+            if (retc != SweConst.OK) {
+              sj.swi_close_jpl_file();
+              swed.jpl_file_is_open = false;
+            }
+          } else {        /* asteroid */
+            /* first sun */
+            try {
+              retc = sj.swi_pleph(t, SwephJPL.J_SUN, SwephJPL.J_SBARY, xsun, serr);
+            } catch (SwissephException se) {
+              retc = se.getRC();
+            }
+            if (retc != SweConst.OK) {
+              sj.swi_close_jpl_file();
+              swed.jpl_file_is_open = false;
+            }
+            /* asteroid */
+            retc = sweph(t, ipli, ifno, iflag, xsun, SwephData.NO_SAVE, xx, serr);
+          }
+          if (retc != SweConst.OK) {
+            return(retc);
+          }
+          /* for accuracy in speed, we need earth as well */
+          if ((iflag & SweConst.SEFLG_SPEED)!=0
+            && (iflag & SweConst.SEFLG_HELCTR)==0
+            && (iflag & SweConst.SEFLG_BARYCTR)==0) {
+            try {
+              retc = sj.swi_pleph(t, SwephJPL.J_EARTH, SwephJPL.J_SBARY, xearth, serr);
+            } catch (SwissephException se) {
+              retc = se.getRC();
+            }
+            if (retc != SweConst.OK) {
+              sj.swi_close_jpl_file();
+              swed.jpl_file_is_open = false;
+              return(retc);
+            }
+          }
+          break;
+        case SweConst.SEFLG_SWIEPH:
+          if (ibody == SwephData.IS_PLANET) {
+            retc = sweplan(t, ipli, ifno, iflag, SwephData.NO_SAVE, xx, xearth,
+                           xsun, null, serr);
+          } else {          /*asteroid*/
+            retc = sweplan(t, SwephData.SEI_EARTH, SwephData.SEI_FILE_PLANET,
+                           iflag, SwephData.NO_SAVE, xearth, null, xsun, null,
+                           serr);
+            if (retc == SweConst.OK) {
+              retc = sweph(t, ipli, ifno, iflag, xsun, SwephData.NO_SAVE, xx,
+                           serr);
+            }
+          }
+          if (retc != SweConst.OK) {
+            return(retc);
+          }
+          break;
         case SweConst.SEFLG_MOSEPH:
         default:
           /*
@@ -3367,6 +5009,14 @@ public class SwissEph
             if (ibody == SwephData.IS_PLANET) {
               retc = smosh.swi_moshplan(t, ipli, SwephData.NO_SAVE, xxsv,
                                         xearth, serr);
+            } else {                /* if asteroid */
+              retc = sweph(t, ipli, ifno, iflag, null, SwephData.NO_SAVE, xxsv,
+                           serr);
+              if (retc == SweConst.OK) {
+                retc = smosh.swi_moshplan(t, SwephData.SEI_EARTH,
+                                          SwephData.NO_SAVE, xearth, xearth,
+                                          serr);
+              }
             }
             if (retc != SweConst.OK) {
               return(retc);
@@ -3381,6 +5031,14 @@ public class SwissEph
             }
           }
           break;
+      }
+      if ((iflag & SweConst.SEFLG_HELCTR)!=0) {
+        if (pdp.iephe == SweConst.SEFLG_JPLEPH ||
+            pdp.iephe == SweConst.SEFLG_SWIEPH) {
+          for (i = 0; i <= 5; i++) {
+            xx[i] -= swed.pldat[SwephData.SEI_SUNBARY].x[i];
+          }
+        }
       }
       if ((iflag & SweConst.SEFLG_SPEED)!=0) {
         /* observer position for t(light-time) */
@@ -3683,6 +5341,10 @@ public class SwissEph
     dt = dtsave_for_defl = 0;     /* dummy assign to silence gcc */
     if ((iflag & SweConst.SEFLG_MOSEPH)!=0) {
       epheflag = SweConst.SEFLG_MOSEPH;
+    } else if ((iflag & SweConst.SEFLG_SWIEPH)!=0) {
+      epheflag = SweConst.SEFLG_SWIEPH;
+    } else if ((iflag & SweConst.SEFLG_JPLEPH)!=0) {
+      epheflag = SweConst.SEFLG_JPLEPH;
     }
     /* the conversions will be done with xx[]. */
     for (i = 0; i <= 5; i++) {
@@ -4061,14 +5723,30 @@ public class SwissEph
       u[i] = xx[i+offs];
     }
     /* Eh = earthbary(t) - sunbary(t) = earthhel */
+    if (iephe == SweConst.SEFLG_JPLEPH || iephe == SweConst.SEFLG_SWIEPH) {
+      for (i = 0; i <= 2; i++) {
+        e[i] = xearth[i] - psdp.x[i];
+      }
+    } else {
       for (i = 0; i <= 2; i++) {
         e[i] = xearth[i];
       }
+    }
     /* Q = planetbary(t-tau) - sunbary(t-tau) = 'planethel' */
     /* first compute sunbary(t-tau) for */
+    if (iephe == SweConst.SEFLG_JPLEPH || iephe == SweConst.SEFLG_SWIEPH) {
+      for (i = 0; i <= 2; i++) {
+        /* this is sufficient precision */
+        xsun[i] = psdp.x[i] - dt * psdp.x[i+3];
+      }
+      for (i = 3; i <= 5; i++) {
+        xsun[i] = psdp.x[i];
+      }
+    } else {
       for (i = 0; i <= 5; i++) {
         xsun[i] = psdp.x[i];
       }
+    }
     for (i = 0; i <= 2; i++) {
       q[i] = xx[i+offs] + xearth[i] - xsun[i];
     }
@@ -4136,9 +5814,15 @@ public class SwissEph
         u[i] = xx[i+offs] - dtsp * xx[i+3+offs];
       }
       /* Eh = earthbary(t) - sunbary(t) = earthhel */
+      if (iephe == SweConst.SEFLG_JPLEPH || iephe == SweConst.SEFLG_SWIEPH) {
+        for (i = 0; i <= 2; i++) {
+          e[i] = xearth[i] - psdp.x[i] - dtsp * (xearth[i+3] - psdp.x[i+3]);
+        }
+      } else {
         for (i = 0; i <= 2; i++) {
           e[i] = xearth[i] - dtsp * xearth[i+3];
         }
+      }
       /* Q = planetbary(t-tau) - sunbary(t-tau) = 'planethel' */
       for (i = 0; i <= 2; i++) {
         q[i] = u[i] + xearth[i] - xsun[i] - dtsp * (xearth[i+3] - xsun[i+3]);
@@ -4262,7 +5946,8 @@ public class SwissEph
        *   with heliocentric or barycentric computation of earth:
        *     light-time correction of heliocentric earth position.
        */
-      if (
+      if (pedp.iephe == SweConst.SEFLG_JPLEPH ||
+          pedp.iephe == SweConst.SEFLG_SWIEPH ||
           (iflag & SweConst.SEFLG_HELCTR)!=0 ||
           (iflag & SweConst.SEFLG_BARYCTR)!=0) {
         for (i = 0; i <= 5; i++) {
@@ -4290,6 +5975,39 @@ public class SwissEph
           switch(pedp.iephe) {
             /* if geocentric sun, new sun at t'
              * if heliocentric or barycentric earth, new earth at t' */
+            case SweConst.SEFLG_JPLEPH:
+              try {
+                if ((iflag & SweConst.SEFLG_HELCTR)!=0 ||
+                    (iflag & SweConst.SEFLG_BARYCTR)!=0) {
+                  retc = sj.swi_pleph(t, SwephJPL.J_EARTH, SwephJPL.J_SBARY, xearth, serr);
+                } else {
+                  retc = sj.swi_pleph(t, SwephJPL.J_SUN, SwephJPL.J_SBARY, xsun, serr);
+                }
+              } catch (SwissephException se) {
+                retc = se.getRC();
+              }
+              if (retc != SweConst.OK) {
+                sj.swi_close_jpl_file();
+                swed.jpl_file_is_open = false;
+                return(retc);
+              }
+              break;
+            case SweConst.SEFLG_SWIEPH:
+              /*
+                retc = sweph(t, SEI_SUN, SEI_FILE_PLANET, iflag, NULL, NO_SAVE, xearth, serr);
+              */
+              if ((iflag & SweConst.SEFLG_HELCTR)!=0 ||
+                  (iflag & SweConst.SEFLG_BARYCTR)!=0) {
+                retc = sweplan(t, SwephData.SEI_EARTH,
+                               SwephData.SEI_FILE_PLANET, iflag,
+                               SwephData.NO_SAVE, xearth, null, xsun, null,
+                               serr);
+              } else {
+                retc = sweph(t, SwephData.SEI_SUNBARY,
+                             SwephData.SEI_FILE_PLANET, iflag, null,
+                             SwephData.NO_SAVE, xsun, serr);
+              }
+              break;
             case SweConst.SEFLG_MOSEPH:
               if ((iflag & SweConst.SEFLG_HELCTR)!=0 ||
                   (iflag & SweConst.SEFLG_BARYCTR)!=0) {
@@ -4459,6 +6177,43 @@ public class SwissEph
                                                    SwephData.CLIGHT / 86400.0;
       t = pdp.teval - dt;
       switch(pdp.iephe) {
+        case SweConst.SEFLG_JPLEPH:
+          try {
+            retc = sj.swi_pleph(t, SwephJPL.J_MOON, SwephJPL.J_EARTH, xx, serr);
+          } catch (SwissephException se) {
+            retc = se.getRC();
+          }
+          if (retc == SweConst.OK) {
+            try {
+              retc = sj.swi_pleph(t, SwephJPL.J_EARTH, SwephJPL.J_SBARY, xe, serr);
+            } catch (SwissephException se) {
+              retc = se.getRC();
+            }
+          }
+          if (retc == SweConst.OK && (iflag & SweConst.SEFLG_HELCTR)!=0) {
+            try {
+              retc = sj.swi_pleph(t, SwephJPL.J_SUN, SwephJPL.J_SBARY, xs, serr);
+            } catch (SwissephException se) {
+              retc = se.getRC();
+            }
+          }
+          if (retc != SweConst.OK) {
+            sj.swi_close_jpl_file();
+            swed.jpl_file_is_open = false;
+          }
+          for (i = 0; i <= 5; i++) {
+            xx[i] += xe[i];
+          }
+          break;
+        case SweConst.SEFLG_SWIEPH:
+          retc = sweplan(t, SwephData.SEI_MOON, SwephData.SEI_FILE_MOON, iflag, SwephData.NO_SAVE, xx, xe, xs, null, serr);
+          if (retc != SweConst.OK) {
+            return(retc);
+          }
+          for (i = 0; i <= 5; i++) {
+            xx[i] += xe[i];
+          }
+          break;
         case SweConst.SEFLG_MOSEPH:
           /* this method results in an error of a milliarcsec in speed */
           for (i = 0; i <= 2; i++) {
@@ -4883,6 +6638,7 @@ int refepyOffs;
    */
   private int lunar_osc_elem(double tjd, int ipl, int iflag, StringBuffer serr) {
     int i, j, istart;
+    int ipli = SwephData.SEI_MOON;
     int epheflag = SweConst.SEFLG_DEFAULTEPH;
     int retc = SweConst.ERR;
     int flg1, flg2;
@@ -4892,6 +6648,7 @@ int refepyOffs;
     double a, b;
     double xpos[][]=new double[3][6], xx[][]=new double[3][6],
            xxa[][]=new double[3][6];
+    double xp[];
     double xnorm[]=new double[6], r[]=new double[6];
     double rxy, rxyz, t, dt, fac, sgn;
     double sinnode, cosnode, sinincl, cosincl, sinu, cosu, sinE, cosE;
@@ -4935,6 +6692,10 @@ int refepyOffs;
      *********************************************/
     if ((iflag & SweConst.SEFLG_MOSEPH)!=0) {
       epheflag = SweConst.SEFLG_MOSEPH;
+    } else if ((iflag & SweConst.SEFLG_SWIEPH)!=0) {
+      epheflag = SweConst.SEFLG_SWIEPH;
+    } else if ((iflag & SweConst.SEFLG_JPLEPH)!=0) {
+      epheflag = SweConst.SEFLG_JPLEPH;
     }
     /* there may be a moon of wrong ephemeris in save area
      * force new computation: */
@@ -4950,6 +6711,114 @@ int refepyOffs;
 //  three_positions:
     do {
       switch(epheflag) {
+        case SweConst.SEFLG_JPLEPH:
+          speed_intv = SwephData.NODE_CALC_INTV;
+          for (i = istart; i <= 2; i++) {
+            if (i == 0) {
+              t = tjd - speed_intv;
+            } else if (i == 1) {
+              t = tjd + speed_intv;
+            } else {
+              t = tjd;
+            }
+            xp = xpos[i];
+            try {
+              retc = jplplan(t, ipli, iflag, SwephData.NO_SAVE, xp, null, null,
+                             serr);
+            } catch (SwissephException swe) {
+              retc = swe.getRC();
+              /* read error or corrupt file */
+              if (retc == SweConst.ERR) {
+                return(SweConst.ERR);
+              }
+            }
+            /* light-time-corrected moon for apparent node
+             * this makes a difference of several milliarcseconds with
+             * the node and 0.1" with the apogee.
+             * the simple formual 'x[j] -= dt * speed' should not be
+             * used here. the error would be greater than the advantage
+             * of computation speed. */
+            if ((iflag & SweConst.SEFLG_TRUEPOS) == 0 && retc >= SweConst.OK) {
+              dt = SMath.sqrt(sl.square_sum(xpos[i])) * SweConst.AUNIT /
+                                                    SwephData.CLIGHT / 86400.0;
+              try {
+                retc = jplplan(t-dt, ipli, iflag, SwephData.NO_SAVE, xpos[i],
+                               null, null, serr); /**/
+              } catch (SwissephException swe) {
+                retc = swe.getRC();
+                /* read error or corrupt file */
+                if (retc == SweConst.ERR) {
+                  return(SweConst.ERR);
+                }
+              }
+            }
+            /* jpl ephemeris not on disk, or date beyond ephemeris range */
+            if (retc == SwephData.NOT_AVAILABLE) {
+              iflag = (iflag & ~SweConst.SEFLG_JPLEPH) | SweConst.SEFLG_SWIEPH;
+              epheflag = SweConst.SEFLG_SWIEPH;
+              if (serr != null && serr.length() + 30 < SwissData.AS_MAXCH) {
+                serr.append(" \ntrying Swiss Eph; ");
+              }
+              break;
+            } else if (retc == SwephData.BEYOND_EPH_LIMITS) {
+              if (tjd > SwephData.MOSHLUEPH_START &&
+                  tjd < SwephData.MOSHLUEPH_END) {
+                iflag = (iflag & ~SweConst.SEFLG_JPLEPH) |
+                        SweConst.SEFLG_MOSEPH;
+                epheflag = SweConst.SEFLG_MOSEPH;
+                if (serr != null && serr.length() + 30 < SwissData.AS_MAXCH) {
+                  serr.append(" \nusing Moshier Eph; ");
+                }
+                break;
+              } else
+                return SweConst.ERR;
+            }
+            /* precession and nutation etc. */
+            retc = swi_plan_for_osc_elem(iflag|SweConst.SEFLG_SPEED, t, xpos[i]); /* retc is always ok */
+
+          }
+          break;
+      case SweConst.SEFLG_SWIEPH:
+        speed_intv = SwephData.NODE_CALC_INTV;
+        for (i = istart; i <= 2; i++) {
+          if (i == 0) {
+            t = tjd - speed_intv;
+          } else if (i == 1) {
+            t = tjd + speed_intv;
+          } else {
+            t = tjd;
+          }
+          retc = swemoon(t, iflag | SweConst.SEFLG_SPEED, SwephData.NO_SAVE,
+                         xpos[i], serr);/**/
+          if (retc == SweConst.ERR) {
+            return(SweConst.ERR);
+          }
+          /* light-time-corrected moon for apparent node (~ 0.006") */
+          if ((iflag & SweConst.SEFLG_TRUEPOS) == 0 && retc >= SweConst.OK) {
+            dt = SMath.sqrt(sl.square_sum(xpos[i])) * SweConst.AUNIT /
+                           SwephData.CLIGHT / 86400.0;
+            retc = swemoon(t-dt, iflag | SweConst.SEFLG_SPEED,
+                           SwephData.NO_SAVE, xpos[i], serr);/**/
+            if (retc == SweConst.ERR) {
+              return(SweConst.ERR);
+            }
+          }
+          if (retc == SwephData.NOT_AVAILABLE) {
+            if (tjd > SwephData.MOSHPLEPH_START &&
+                tjd < SwephData.MOSHPLEPH_END) {
+              iflag = (iflag & ~SweConst.SEFLG_SWIEPH) | SweConst.SEFLG_MOSEPH;
+              epheflag = SweConst.SEFLG_MOSEPH;
+              if (serr != null && serr.length() + 30 < SwissData.AS_MAXCH) {
+                serr.append(" \nusing Moshier eph.; ");
+              }
+              break;
+            } else
+            return SweConst.ERR;
+          }
+          /* precession and nutation etc. */
+          retc = swi_plan_for_osc_elem(iflag|SweConst.SEFLG_SPEED, t, xpos[i]); /* retc is always ok */
+        }
+        break;
     case SweConst.SEFLG_MOSEPH:
         /* with moshier moon, we need a greater speed_intv, because here the
          * node and apogee oscillate wildly within small intervals */
@@ -5703,10 +7572,19 @@ int refepyOffs;
     if ((iflag & SweConst.SEFLG_MOSEPH)!=0) {
       epheflag = SweConst.SEFLG_MOSEPH;
     }
+    if ((iflag & SweConst.SEFLG_SWIEPH)!=0) {
+      epheflag = SweConst.SEFLG_SWIEPH;
+    }
+    if ((iflag & SweConst.SEFLG_JPLEPH)!=0) {
+      epheflag = SweConst.SEFLG_JPLEPH;
+    }
     if (epheflag == 0) {
       epheflag = SweConst.SEFLG_DEFAULTEPH;
     }
     iflag = (iflag & ~SweConst.SEFLG_EPHMASK) | epheflag;
+    /* SEFLG_JPLHOR only with JPL and Swiss Ephemeeris */
+    if ((epheflag & SweConst.SEFLG_JPLEPH) == 0) 
+      iflag = iflag & ~(SweConst.SEFLG_JPLHOR | SweConst.SEFLG_JPLHOR_APPROX);
     /* planets that have no JPL Horizons mode */
     if (ipl == SweConst.SE_OSCU_APOG || ipl == SweConst.SE_TRUE_NODE 
         || ipl == SweConst.SE_MEAN_APOG || ipl == SweConst.SE_MEAN_NODE
@@ -5751,6 +7629,588 @@ int refepyOffs;
     if ((iflag & SweConst.SEFLG_JPLHOR_APPROX) != 0 && jplhora_model != SweConst.SEMOD_JPLHORA_1)
       iflag |= SweConst.SEFLG_ICRS;
     return iflag;
+  }
+
+  int swe_fixstar_found(StringBuffer serr, String s, StringBuffer star,
+                        int fline, double tjd, int iflag, int iflgsave,
+                        int epheflag, double[] xx) {
+    double xpo[] = null;
+    double ra_s, ra_pm, de_pm, ra, de, t, cosra, cosde, sinra, sinde;
+    double ra_h, ra_m, de_d, de_m, de_s;
+    String sde_d;
+    double epoch, radv, parall, u;
+    double x[]=new double[6];
+    double xxsv[]=new double[6];
+    double xobs[]=new double[6];
+    int retc;
+    PlanData pedp = swed.pldat[SwephData.SEI_EARTH];
+    PlanData psdp = swed.pldat[SwephData.SEI_SUNBARY];
+    Epsilon oe = swed.oec2000;
+
+    String[] cpos=new String[20];
+    StringTokenizer tk=new StringTokenizer(s,",");
+    int i=tk.countTokens();
+    if(i<2) {
+      if (serr != null) {
+        serr.setLength(0);
+        serr.append("star file "+SweConst.SE_STARFILE+" damaged at line "+
+                                                                   fline);
+      }
+      return swe_fixstar_error(xx,SweConst.ERR);
+    }
+    int n=0;
+    while(tk.hasMoreTokens() && n<20) {
+      cpos[n++]=tk.nextToken();
+    }
+    cpos[0]=cpos[0].trim();
+    cpos[1]=cpos[1].trim();
+    if (i < 13) {
+      if (serr!=null) {
+        serr.setLength(0);
+        serr.append("data of star '"+cpos[0]+","+cpos[1]+"' incomplete");
+      }
+      return swe_fixstar_error(xx,SweConst.ERR);
+    }
+    // JAVA: Grrr: zumindest cpos[2] muss keine Zahl sein, aber es FAENGT
+    // moeglicherweise mit einer Zahl AN!!!
+    int idx=cpos[2].length();
+    while(true) {
+      try {
+        epoch = Double.valueOf(cpos[2].substring(0,idx)).doubleValue();
+        break;
+      } catch (NumberFormatException nf) {
+        idx--;
+        if (idx==0) { epoch=0.; break; }
+      }
+    }
+    ra_h = new Double(cpos[3]).doubleValue();
+    ra_m = new Double(cpos[4]).doubleValue();
+    ra_s = new Double(cpos[5]).doubleValue();
+    de_d = new Double(cpos[6]).doubleValue();
+    sde_d = cpos[6];
+    de_m = new Double(cpos[7]).doubleValue();
+    de_s = new Double(cpos[8]).doubleValue();
+    ra_pm = new Double(cpos[9]).doubleValue();
+    de_pm = new Double(cpos[10]).doubleValue();
+    radv = new Double(cpos[11]).doubleValue();
+    parall = new Double(cpos[12]).doubleValue();
+    /* return trad. name, nomeclature name */
+    if (cpos[0].length() > SweConst.SE_MAX_STNAME) {
+      cpos[0]=cpos[0].substring(0,SweConst.SE_MAX_STNAME);
+    }
+    if (cpos[1].length() > SweConst.SE_MAX_STNAME-1) {
+      cpos[1]=cpos[1].substring(0,SweConst.SE_MAX_STNAME-1);
+    }
+    // name of star:
+    star.setLength(0);
+    star.append(cpos[0]);
+    if (cpos[0].length() + cpos[1].length() + 1 < SweConst.SE_MAX_STNAME - 1)
+      star.append(","+cpos[1]);
+    /****************************************
+     * position and speed (equinox)
+     ****************************************/
+    /* ra and de in degrees */
+    ra = (ra_s / 3600.0 + ra_m / 60.0 + ra_h) * 15.0;
+    if (sde_d.indexOf('-') < 0) {
+      de = de_s / 3600.0 + de_m / 60.0 + de_d;
+    } else {
+      de = -de_s / 3600.0 - de_m / 60.0 + de_d;
+    }
+    /* speed in ra and de, degrees per century */
+    if (swed.is_old_starfile) {
+      ra_pm = ra_pm * 15 / 3600.0;
+      de_pm = de_pm / 3600.0;
+    } else {
+      ra_pm = ra_pm / 10.0 / 3600.0;
+      de_pm = de_pm / 10.0 / 3600.0;
+      parall /= 1000.0;
+    }
+    /* parallax, degrees */
+    if (parall > 1) {
+      parall = (1 / parall / 3600.0);
+    } else {
+      parall /= 3600;
+    }
+    /* radial velocity in AU per century */
+    radv *= SwephData.KM_S_TO_AU_CTY;
+    /*printf("ra=%.17f,de=%.17f,ma=%.17f,md=%.17f,pa=%.17f,rv=%.17f\n",ra,de,ra_pm,de_pm,parall,radv);*/
+    /* radians */
+    ra *= SwissData.DEGTORAD;
+    de *= SwissData.DEGTORAD;
+    ra_pm *= SwissData.DEGTORAD;
+    de_pm *= SwissData.DEGTORAD;
+    ra_pm /= SMath.cos(de); /* catalogues give proper motion in RA as great circle */
+    parall *= SwissData.DEGTORAD;
+    x[0] = ra;
+    x[1] = de;
+    x[2] = 1;     /* -> unit vector */
+    /* cartesian */
+    sl.swi_polcart(x, x);
+    /*space motion vector */
+    cosra = SMath.cos(ra);
+    cosde = SMath.cos(de);
+    sinra = SMath.sin(ra);
+    sinde = SMath.sin(de);
+    x[3] = -ra_pm * cosde * sinra - de_pm * sinde * cosra
+                          + radv * parall * cosde * cosra;
+    x[4] = ra_pm * cosde * cosra - de_pm * sinde * sinra
+                          + radv * parall * cosde * sinra;
+    x[5] = de_pm * cosde + radv * parall * sinde;
+    x[3] /= 36525;
+    x[4] /= 36525;
+    x[5] /= 36525;
+    /******************************************
+     * FK5
+     ******************************************/
+    if (epoch == 1950) {
+      sl.swi_FK4_FK5(x, SwephData.B1950);
+      sl.swi_precess(x, SwephData.B1950, 0, SwephData.J_TO_J2000);
+      sl.swi_precess(x, 3, SwephData.B1950, 0, SwephData.J_TO_J2000);
+    }
+    /* FK5 to ICRF, if jpl ephemeris is referred to ICRF.
+     * With data that are already ICRF, epoch = 0 */
+    if (epoch != 0) {
+      sl.swi_icrs2fk5(x, iflag, true); /* backward, i. e. to icrf */
+      /* with ephemerides < DE403, we now convert to J2000 */
+      if (swed.jpldenum < 403)
+        sl.swi_bias(x, SwephData.J2000, SweConst.SEFLG_SPEED, false);
+    }
+    /****************************************************
+     * earth/sun
+     * for parallax, light deflection, and aberration,
+     ****************************************************/
+    if ((iflag & SweConst.SEFLG_BARYCTR)==0 &&
+        ((iflag & SweConst.SEFLG_HELCTR)==0 || (iflag & SweConst.SEFLG_MOSEPH)==0)) {
+      if ((retc = main_planet(tjd, SwephData.SEI_EARTH, epheflag, iflag, serr)) != SweConst.OK) {
+        /*retc = ERR;
+        goto return_err;*/
+        iflag &= ~(SweConst.SEFLG_TOPOCTR|SweConst.SEFLG_HELCTR);
+        /* on error, we provide barycentric position: */
+        iflag |= SweConst.SEFLG_BARYCTR | SweConst.SEFLG_TRUEPOS | SweConst.SEFLG_NOGDEFL;
+        retc = iflag;
+      } else {
+        /* iflag (ephemeris bit) may have changed in main_planet() */
+        iflag = swed.pldat[SwephData.SEI_EARTH].xflgs;
+      }
+    }
+    /************************************
+     * observer: geocenter or topocenter
+     ************************************/
+    /* if topocentric position is wanted  */
+    if ((iflag & SweConst.SEFLG_TOPOCTR)!=0) {
+      if (swed.topd.teval != pedp.teval
+        || swed.topd.teval == 0) {
+        if (swi_get_observer(pedp.teval, iflag | SweConst.SEFLG_NONUT, SwephData.DO_SAVE, xobs, serr)!=
+                                                                  SweConst.OK) {
+          return SweConst.ERR;
+        }
+      } else {
+        for (i = 0; i <= 5; i++) {
+          xobs[i] = swed.topd.xobs[i];
+        }
+      }
+      /* barycentric position of observer */
+      for (i = 0; i <= 5; i++) {
+        xobs[i] = xobs[i] + pedp.x[i];
+      }
+    } else if ((iflag & SweConst.SEFLG_BARYCTR)==0 &&
+        ((iflag & SweConst.SEFLG_HELCTR)==0 || (iflag & SweConst.SEFLG_MOSEPH)==0)) {
+      /* barycentric position of geocenter */
+      for (i = 0; i <= 5; i++) {
+        xobs[i] = pedp.x[i];
+      }
+    }
+    /************************************
+     * position and speed at tjd        *
+     ************************************/
+    if (epoch == 1950) {
+      t= (tjd - SwephData.B1950);   /* days since 1950.0 */
+    } else { /* epoch == 2000 */
+      t= (tjd - SwephData.J2000);   /* days since 2000.0 */
+    }
+    /* for parallax */
+    if ((iflag & SweConst.SEFLG_HELCTR)!=0 &&
+        (iflag & SweConst.SEFLG_MOSEPH)!=0) {
+      xpo = null;         /* no parallax, if moshier and heliocentric */
+    } else if ((iflag & SweConst.SEFLG_HELCTR)!=0) {
+      xpo = psdp.x;
+    } else if ((iflag & SweConst.SEFLG_BARYCTR)!=0) {
+      xpo = null;         /* no parallax, if barycentric */
+    } else {
+      xpo = xobs;
+    }
+    if (xpo == null) {
+      for (i = 0; i <= 2; i++) {
+        x[i] += t * x[i+3];
+      }
+    } else {
+      for (i = 0; i <= 2; i++) {
+        x[i] += t * x[i+3] - parall * xpo[i];
+        x[i+3] -= parall * xpo[i+3];
+      }
+    }
+    /************************************
+     * relativistic deflection of light *
+     ************************************/
+    for (i = 0; i <= 5; i++) {
+      x[i] *= 10000;      /* great distance, to allow
+                           * algorithm used with planets */
+    }
+    if ((iflag & SweConst.SEFLG_TRUEPOS) == 0 &&
+        (iflag & SweConst.SEFLG_NOGDEFL) == 0) {
+      swi_deflect_light(x, 0, 0, iflag & SweConst.SEFLG_SPEED);
+    }
+    /**********************************
+     * 'annual' aberration of light   *
+     * speed is incorrect !!!         *
+     **********************************/
+    if ((iflag & SweConst.SEFLG_TRUEPOS) == 0 &&
+        (iflag & SweConst.SEFLG_NOABERR) == 0) {
+      swi_aberr_light(x, xpo, iflag & SweConst.SEFLG_SPEED);
+    }
+    /* ICRS to J2000 */
+    if ((iflag & SweConst.SEFLG_ICRS) == 0 &&
+        (swed.jpldenum >= 403 || (iflag & SweConst.SEFLG_BARYCTR) != 0)) {
+      sl.swi_bias(x, tjd, iflag, false);
+    }/**/
+    /* save J2000 coordinates; required for sidereal positions */
+    for (i = 0; i <= 5; i++) {
+      xxsv[i] = x[i];
+    }
+    /************************************************
+     * precession, equator 2000 -> equator of date *
+     ************************************************/
+    /*x[0] = -0.374018403; x[1] = -0.312548592; x[2] = -0.873168719;*/
+    if ((iflag & SweConst.SEFLG_J2000) == 0) {
+      sl.swi_precess(x, tjd, iflag, SwephData.J2000_TO_J);
+      if ((iflag & SweConst.SEFLG_SPEED)!=0) {
+        swi_precess_speed(x, tjd, iflag, SwephData.J2000_TO_J);
+      }
+      oe = swed.oec;
+    } else {
+      oe = swed.oec2000;
+    }
+    /************************************************
+     * nutation                                     *
+     ************************************************/
+    if ((iflag & SweConst.SEFLG_NONUT) == 0) {
+      swi_nutate(x, 0, 0, false);
+    }
+if (false) {
+  double r = SMath.sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
+  System.out.println((x[0]/r) + " " + (x[1]/r) + " " + (x[2]/r) + "\n");
+}
+    /************************************************
+     * unit vector (distance = 1)                   *
+     ************************************************/
+    u = SMath.sqrt(sl.square_sum(x));
+    for (i = 0; i <= 5; i++) {
+      x[i] /= u;
+    }
+    u = SMath.sqrt(sl.square_sum(xxsv));
+    for (i = 0; i <= 5; i++) {
+      xxsv[i] /= u;
+    }
+    /************************************************
+     * set speed = 0, because not correct (aberration)
+     ************************************************/
+    for (i = 3; i <= 5; i++) {
+      x[i] = xxsv[i] = 0;
+    }
+    /************************************************
+     * transformation to ecliptic.                  *
+     * with sidereal calc. this will be overwritten *
+     * afterwards.                                  *
+     ************************************************/
+    if ((iflag & SweConst.SEFLG_EQUATORIAL) == 0) {
+      sl.swi_coortrf2(x, x, oe.seps, oe.ceps);
+      if ((iflag & SweConst.SEFLG_SPEED)!=0) {
+        sl.swi_coortrf2(x, 3, x, 3, oe.seps, oe.ceps);
+      }
+      if ((iflag & SweConst.SEFLG_NONUT) == 0) {
+        sl.swi_coortrf2(x, x, swed.nut.snut, swed.nut.cnut);
+        if ((iflag & SweConst.SEFLG_SPEED)!=0) {
+          sl.swi_coortrf2(x, 3, x, 3, swed.nut.snut, swed.nut.cnut);
+        }
+      }
+    }
+    /************************************
+     * sidereal positions               *
+     ************************************/
+    if ((iflag & SweConst.SEFLG_SIDEREAL)!=0) {
+      /* rigorous algorithm */
+      if ((swed.sidd.sid_mode & SweConst.SE_SIDBIT_ECL_T0)!=0) {
+        if (swi_trop_ra2sid_lon(xxsv, x, xxsv, iflag, serr) != SweConst.OK) {
+          return SweConst.ERR;
+        }
+        if ((iflag & SweConst.SEFLG_EQUATORIAL)!=0) {
+          for (i = 0; i <= 5; i++) {
+            x[i] = xxsv[i];
+          }
+        }
+      /* project onto solar system equator */
+      } else if ((swed.sidd.sid_mode & SweConst.SE_SIDBIT_SSY_PLANE)!=0) {
+        if (swi_trop_ra2sid_lon_sosy(xxsv, x, xxsv, iflag, serr) !=
+                                                                SweConst.OK) {
+          return SweConst.ERR;
+        }
+        if ((iflag & SweConst.SEFLG_EQUATORIAL)!=0) {
+          for (i = 0; i <= 5; i++) {
+            x[i] = xxsv[i];
+          }
+        }
+      /* traditional algorithm */
+      } else {
+        sl.swi_cartpol_sp(x, x);
+        x[0] -= swe_get_ayanamsa(tjd) * SwissData.DEGTORAD;
+        sl.swi_polcart_sp(x, x);
+      }
+    }
+    /************************************************
+     * transformation to polar coordinates          *
+     ************************************************/
+    if ((iflag & SweConst.SEFLG_XYZ) == 0) {
+      sl.swi_cartpol_sp(x, x);
+    }
+    /**********************
+     * radians to degrees *
+     **********************/
+    if ((iflag & SweConst.SEFLG_RADIANS) == 0 &&
+        (iflag & SweConst.SEFLG_XYZ) == 0) {
+      for (i = 0; i < 2; i++) {
+        x[i] *= SwissData.RADTODEG;
+        x[i+3] *= SwissData.RADTODEG;
+      }
+    }
+    for (i = 0; i <= 5; i++) {
+      xx[i] = x[i];
+    }
+    /* if no ephemeris has been specified, do not return chosen ephemeris */
+    if ((iflgsave & SweConst.SEFLG_EPHMASK) == 0) {
+      iflag = iflag & ~SweConst.SEFLG_DEFAULTEPH;
+    }
+    iflag = iflag & ~SweConst.SEFLG_SPEED;
+    return iflag;
+  }
+
+  int swe_fixstar_error(double[] xx, int retc) {
+    for (int i = 0; i <= 5; i++) {
+      xx[i] = 0;
+    }
+    return retc;
+  }
+
+  /**
+  * Returns the magnitude (brightness) of a fixstar. Use this
+  * version, if you just need the magnitude of the star, but not the
+  * name of the star on output.<br>
+  * Basically, this method corresponds to <code>swe_fixstar_mag(...)</code>
+  * method in the original.
+  * @param star Name of star or line number in star file (start from 1,
+  *             don't count comment lines).<p>
+  * @return     magnitude of the star.
+  * @see swisseph.SwissEph#getFixstarMagnitude(StringBuffer)
+  */
+  public double getFixstarMagnitude(String star) throws SwissephException {
+    return getFixstarMagnitude(new StringBuffer(star));
+  }
+  /**
+  * Returns the magnitude (brightness) of a fixstar. Use this
+  * version, if you also need the star name on output.<br>
+  * Corresponds to <code>swe_fixstar_mag(...)</code> method in the original.
+  * @param star (Both input and output parameter.) Name of star
+  *             or line number in star file (start from 1, don't
+  *             count comment lines).<p>
+  *             The name of the star is returned in the format
+  *             trad_name, nomeclat_name in this parameter.
+  * @return     magnitude of the star.
+  * @see swisseph.SwissEph#getFixstarMagnitude(String)
+  */
+  public double getFixstarMagnitude(StringBuffer star) throws SwissephException {
+    double[] mag = new double[1];
+    StringBuffer serr = new StringBuffer();
+
+    // Throws SwissephException on any error:
+    try {
+      swe_fixstar_mag(star, mag, serr);
+    } catch (SwissephException se) {
+      mag[0] = 0;
+      throw se;
+    }
+    return mag[0];
+  }
+  /**********************************************************
+   * get fixstar magnitude
+   * parameters:
+   * star         name of star or line number in star file
+   *              (start from 1, don't count comment).
+   *              If no error occurs, the name of the star is returned
+   *              in the format trad_name, nomeclat_name
+   *
+   * mag          pointer to a double, for star magnitude
+   * serr         error return string
+  **********************************************************/
+  /**
+  * Returns the magnitude (brightness) of a fixstar.
+  * @param star (Both input and output parameter.) Name of star
+  *             or line number in star file (start from 1, don't
+  *             count comment lines).<p>
+  *             If no error occurs, the name of the star is returned
+  *             in the format trad_name, nomeclat_name in this
+  *             parameter.
+  * @param mag  (Output parameter.) The magnitude of the star. The
+  *             parameter has to be a double[1].
+  * @param serr Buffer for error message on output
+  * @return     SweConst.OK. All errors will throw a
+  *             SwissephException.
+  */
+  protected int swe_fixstar_mag(StringBuffer star, double[] mag, StringBuffer serr) throws SwissephException {
+    int i;
+    int star_nr = 0;
+    boolean  isnomclat = false;
+    int cmplen;
+    String[] cpos = new String[20];
+    String sstar;
+    String fstar;
+    String s="", sp;
+    int line = 0;
+    int fline = 0;
+    int retc = SweConst.ERR;
+    mag[0] = 0;
+    if (serr != null)
+      serr.setLength(0);
+    /******************************************************
+     * Star file
+     * close to the beginning, a few stars selected by Astrodienst.
+     * These can be accessed by giving their number instead of a name.
+     * All other stars can be accessed by name.
+     * Comment lines start with # and are ignored.
+     ******************************************************/
+    if (swed.fixfp == null) {
+      // May throw SwissephException:
+      int swErrorType = SwissephException.FILE_NOT_FOUND;
+      try {
+        swed.fixfp = swi_fopen(SwephData.SEI_FILE_FIXSTAR, SweConst.SE_STARFILE,
+                                  swed.ephepath, serr);
+      } catch (SwissephException se) {
+        if (serr != null) {
+          serr.setLength(0);
+          serr.append(se.getMessage());
+          swErrorType = se.getType();
+        }
+        swed.is_old_starfile = true;
+        try {
+          // May throw SwissephException:
+          swed.fixfp = swi_fopen(SwephData.SEI_FILE_FIXSTAR, SweConst.SE_STARFILE_OLD,
+                                    swed.ephepath, null);
+        } catch (SwissephException se2) {
+          // Don't change error message from above
+          swed.fixfp = null;
+        }
+        if (swed.fixfp == null) {
+          throw new SwissephException(0./0.,
+              swErrorType,
+              SweConst.ERR,
+              serr.toString());
+//          return SweConst.ERR;
+	  // retc = ERR;
+	  // goto return_err;
+        }
+      }
+    }
+    swed.fixfp.seek(0);
+    sstar=star.toString().substring(0,
+                                SMath.min(star.length(),SweConst.SE_MAX_STNAME));
+    if (sstar.length()>0) {
+      if (sstar.charAt(0) == ',') {
+        isnomclat = true;
+      } else if (Character.isDigit(sstar.charAt(0))) {
+// Use SwissLib.atoi(...) to allow for nonsense input data like 27abc - necessary???
+        star_nr = Integer.parseInt(sstar);
+      } else {
+        /* traditional name of star to lower case */
+        if (sstar.indexOf(',')>=0) {
+           sstar=sstar.substring(0,sstar.indexOf(','));
+        }
+        sstar=sstar.toLowerCase();
+      }
+      sstar=sstar.trim();
+    }
+    cmplen = sstar.length();
+    if (cmplen == 0) {
+      throw new SwissephException(0./0.,
+          SwissephException.UNSUPPORTED_OBJECT,
+          retc,
+          "swe_fixstar_mag(): star name empty");
+    }
+
+    try {
+      while ((s=swed.fixfp.readLine())!=null) {
+        fline++;
+        if (s.startsWith("#")) { continue; }
+        line++;
+        if (star_nr == line)
+          break;
+        else if (star_nr > 0)
+          continue;
+        if (s.indexOf(',') < 0) {
+          throw new SwissephException(0./0.,
+              SwissephException.DAMAGED_FILE_ERROR,
+              retc,
+              "star file " + SweConst.SE_STARFILE + " damaged at line " + fline);
+        }
+        sp = s.substring(s.indexOf(','));
+        if (isnomclat) {
+          if (sp.substring(0, SMath.min(sp.length(), cmplen)).equals(sstar.substring(0, SMath.min(sstar.length(), cmplen))))
+            break;
+          else
+            continue;
+        }
+        fstar = s.substring(0, SMath.min(s.length(), SweConst.SE_MAX_STNAME)).trim();	// Left trimming only in original sources
+        i = fstar.length();
+        if (i < cmplen)
+          continue;
+        fstar = fstar.toLowerCase();
+        if (fstar.substring(0, SMath.min(fstar.length(), cmplen)).equals(sstar.substring(0, SMath.min(sstar.length(), cmplen))))
+          break;
+      }
+    } catch (java.io.IOException ioe) {
+      s = null;
+    }
+    if (s == null) {
+      String errmsg = "star "+star+" not found";
+      mag[0] = 0;
+      throw new SwissephException(0./0.,
+          SwissephException.UNSUPPORTED_OBJECT,
+          retc,
+          errmsg);
+    }
+    i = sl.swi_cutstr(s, ",", cpos, 20);
+    cpos[0] = cpos[0].trim();
+    cpos[1] = cpos[1].trim();
+    if (i < 13) {
+      String errmsg = "data of star '" + cpos[0] + "," + cpos[1] + "' incomplete";
+      throw new SwissephException(0./0.,
+          SwissephException.DAMAGED_FILE_ERROR,
+          retc,
+          errmsg);
+    }
+    try {
+      mag[0] = Double.parseDouble(cpos[13].trim());
+    } catch (NumberFormatException nfe) {
+      throw new SwissephException(0./0.,
+          SwissephException.DAMAGED_FILE_ERROR,
+          retc,
+          "star file " + SweConst.SE_STARFILE + " damaged at line " + fline + ": field 13 is not a double");
+    }
+    /* return trad. name, nomeclature name */
+    if (cpos[0].length() > SweConst.SE_MAX_STNAME)
+      cpos[0] = cpos[0].substring(0, SweConst.SE_MAX_STNAME);
+    if (cpos[1].length() > SweConst.SE_MAX_STNAME)
+      cpos[1] = cpos[1].substring(0, SweConst.SE_MAX_STNAME);
+    star.setLength(0);
+    star.append(cpos[0] + "," + cpos[1]);
+    return SweConst.OK;
   }
 
 
@@ -5895,6 +8355,8 @@ int refepyOffs;
     double t, dt, x[] = new double[6];
     double sidt = sl.swe_sidtime(tjd_ut);
     int iflag = SweConst.SEFLG_EQUATORIAL;
+    if (swed.jpl_file_is_open)
+      iflag |= SweConst.SEFLG_JPLEPH;
     t = tjd_ut + 0.5;
     dt = t - SMath.floor(t);
     sidt -= dt * 24;
@@ -5931,6 +8393,45 @@ int refepyOffs;
     return retval;
   }
 
+  /**
+  * <b>ATTENTION: This method possibly (re-)sets a global parameter used
+  * in calculation of delta T. See SweDate.setGlobalTidalAcc(double).</b>
+  * @see SweDate#setGlobalTidalAcc(double)
+  */
+  private int open_jpl_file(double[] ss, String fname, String fpath, StringBuffer serr) {
+    int retc;
+    StringBuffer serr2 = new StringBuffer();
+    retc = sj.swi_open_jpl_file(ss, fname, fpath, serr);
+    /* If we fail with default JPL ephemeris (DE431), we try the second default
+     * (DE406), but only if serr is not NULL and an warning message can be 
+     * returned. */
+    if (retc != SweConst.OK && fname.indexOf(SweConst.SE_FNAME_DFT) >= 0 && serr != null) {
+      retc = sj.swi_open_jpl_file(ss, SweConst.SE_FNAME_DFT2, fpath, serr2);
+      if (retc == SweConst.OK) {
+        swed.jplfnam = SweConst.SE_FNAME_DFT2;
+        if (serr != null) {
+          serr2.setLength(0);
+          serr2.append("Error with JPL ephemeris file ");
+	  if (serr2.length() + SweConst.SE_FNAME_DFT.length() < SwissData.AS_MAXCH)
+	    serr2.append(SweConst.SE_FNAME_DFT);
+	  if (serr2.length() + serr.length() + 2 < SwissData.AS_MAXCH) 
+	    serr2.append(": " + serr);
+	  if (serr2.length() + 17 < SwissData.AS_MAXCH) 
+	    serr2.append(". Defaulting to ");
+	  if (serr2.length() + SweConst.SE_FNAME_DFT2.length() < SwissData.AS_MAXCH) 
+	    serr2.append(SweConst.SE_FNAME_DFT2);
+          serr.setLength(0);
+          serr.append(serr2);
+        }
+      }
+    }
+    if (retc == SweConst.OK) {
+      swed.jpldenum = sj.swi_get_jpl_denum();
+      swed.jpl_file_is_open = true;
+      SweDate.swi_set_tid_acc(0, 0, swed.jpldenum);
+    }
+    return retc;
+  }
 
 
 
@@ -5962,6 +8463,7 @@ int refepyOffs;
 } // Ende class SwissEph
 
 class MeffEle
+		implements java.io.Serializable
 		{
   double r;
   double m;

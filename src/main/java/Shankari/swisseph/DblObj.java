@@ -79,6 +79,7 @@ package Shankari.swisseph;
 * @version 1.0.0b
 */
 public class DblObj
+		implements java.io.Serializable
 		{
 	public DblObj() {
 		this.val = 0;

@@ -75,6 +75,7 @@
 package Shankari.swisseph;
 
 class Swemmoon
+		implements java.io.Serializable
 		{
 
  /*

@@ -21,7 +21,6 @@
 package Shankari.jyothishya;
 
 import Shankari.core.Date;
-import Shankari.core.Time;
 
 public class Person {
     /*
@@ -29,13 +28,43 @@ public class Person {
     */
     public String name;
     public Date dob;
-    public Time time;
+    public double time;
     public String place;
     public char gender;
     public double longitude;
     public double latitude;
 
-    public Person(String name, Date dob, Time time, String place, char gender, double longitude, double latitude) {
+    public String getName() {
+        return name;
+    }
+
+    public Date getDob() {
+        return dob;
+    }
+
+    public double getTime() {
+        return time;
+    }
+
+    public String getPlace() {
+        return place;
+    }
+
+    public char getGender() {
+        return gender;
+    }
+
+    public double getLongitude() {
+        return longitude;
+    }
+
+    public double getLatitude() {
+        return latitude;
+    }
+
+
+
+    public Person(String name, Date dob, double time, String place, char gender, double longitude, double latitude) {
         this.name = name;
         this.dob = dob;
         this.time = time;

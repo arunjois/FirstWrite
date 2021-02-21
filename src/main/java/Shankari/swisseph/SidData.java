@@ -81,6 +81,7 @@ package Shankari.swisseph;
 * @version 1.0.0a
 */
 class SidData
+		implements java.io.Serializable
 		{
   int sid_mode=0;
   double ayan_t0=0.;

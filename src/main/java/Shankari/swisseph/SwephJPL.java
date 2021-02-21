@@ -80,8 +80,8 @@
 package Shankari.swisseph;
 
 
-
 class SwephJPL
+		implements java.io.Serializable
 		{
   static final int J_MERCURY =  0;
   static final int J_VENUS   =  1;
@@ -139,7 +139,7 @@ class SwephJPL
     String ttl="";  // JAVA: Not used???
     try {
       // throws SwissephException, if null or maybe for other reasons:
-//      js.jplfptr = sw.swi_fopen(SwephData.SEI_FILE_PLANET, js.jplfname, js.jplfpath, serr);
+      js.jplfptr = sw.swi_fopen(SwephData.SEI_FILE_PLANET, js.jplfname, js.jplfpath, serr);
       /* ttl = ephemeris title, e.g.
        * "JPL Planetary Ephemeris DE404/LE404
        *  Start Epoch: JED=   625296.5-3001 DEC 21 00:00:00
@@ -947,7 +947,7 @@ class SwephJPL
     double start=0./0., end=0./0.;
     FilePtr fp = null;
     try {
-     // fp = sw.swi_fopen(SwephData.SEI_FILE_PLANET, fname, swed.ephepath, null);
+      fp = sw.swi_fopen(SwephData.SEI_FILE_PLANET, fname, swed.ephepath, null);
       fp.seek(252+6*400);
       start = fp.readDouble();
       end = fp.readDouble();
@@ -986,6 +986,7 @@ class SwephJPL
 
 
 class JplSave
+		implements java.io.Serializable
 		{
   String jplfname=null;
   String jplfpath=null;

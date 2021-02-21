@@ -89,6 +89,7 @@ import java.util.Locale;
 * there is directly valid for this port to Java as well.</B></I>
 */
 class Swecl
+		implements java.io.Serializable
 		{
 
   SwissEph  sw=null;
@@ -517,7 +518,7 @@ class Swecl
   /* Computes geographic location and type of solar eclipse
    * for a given tjd
    * iflag:        to indicate ephemeris to be used
-   *                        (SEFLG_MOSEPH only)
+   *                        (SEFLG_JPLEPH, SEFLG_SWIEPH, SEFLG_MOSEPH)
    *
    * Algorithms for the central line is taken from Montenbruck, pp. 179ff.,
    * with the exception, that we consider refraction for the maxima of
@@ -606,7 +607,8 @@ class Swecl
   * </CODE><P></BLOCKQUOTE>
   * <B>Attention: geopos must be a double[10], attr a double[20]!</B>
   * @param tjd_ut The Julian Day number in UT
-  * @param ifl To indicate, which ephemeris to be used (SEFLG_MOSEPH only)
+  * @param ifl To indicate, which ephemeris to be used (SEFLG_JPLEPH,
+  * SEFLG_SWIEPH, SEFLG_MOSEPH)
   * @param geopos An array[10], on return containing the geographic positions.
   * @param attr An array[20], on return containing the attributes of the
   * eclipse as above.
@@ -896,6 +898,20 @@ class Swecl
     int retc = SweConst.ERR;
     if (starname == null || starname.length() == 0) {
       retc = sw.swe_calc(tjd_et, ipl, iflag, x, serr);
+    } else {
+      if ((retc = sw.swe_fixstar(starname, tjd_et, iflag, x, serr)) ==
+                                                                SweConst.OK) {
+        /* fixstars have the standard distance 1.
+         * in the occultation routines, this might lead to errors
+         * if interpreted as AU distance. To avoid this, we make it very high.
+         */
+        if ((iflag & SweConst.SEFLG_XYZ)!=0) {
+          for (i = 0; i < 3; i++)
+            x[i] *= 100000000;
+        } else {
+          x[2] *= 100000000;
+        }
+      }
     }
     return retc;
   }
@@ -946,7 +962,8 @@ class Swecl
  *         declare as attr[20] at least !<BR>
   * </CODE><P><B>Attention: geopos must be a double[10], attr a double[20]!</B>
   * @param tjd_ut The Julian Day number in UT
-  * @param ifl To indicate, which ephemeris should be used (SEFLG_MOSEPH only)
+  * @param ifl To indicate, which ephemeris should be used (SEFLG_JPLEPH,
+  * SEFLG_SWIEPH, SEFLG_MOSEPH)
   * @param geopos A double[3] containing geographic longitude, latitude and
   * height in meters above sea level in this order.
   * @param attr An array[20], on return containing the attributes of the
@@ -1220,7 +1237,8 @@ class Swecl
   * again -- <I>Not yet implemented.</I>
   * </CODE><P><B>Attention: tret must be a double[10]!</B>
   * @param tjd_start The Julian Day number in UT, from when to start searching
-  * @param ifl To indicate, which ephemeris should be used (SEFLG_MOSEPH only)
+  * @param ifl To indicate, which ephemeris should be used (SEFLG_JPLEPH,
+  * SEFLG_SWIEPH or SEFLG_MOSEPH)
   * @param ifltype SweConst.SE_ECL_TOTAL for total eclipse or 0 for any eclipse
   * @param tret An array[10], on return containing the times of different
   * occasions of the eclipse as above
@@ -2158,7 +2176,8 @@ class Swecl
   * attr[10]:&nbsp;&nbsp;&nbsp;saros series member number<BR>
   * </CODE><P><B>Attention: attr must be a double[20] at least!</B>
   * @param tjd_start The Julian Day number in UT, from when to start searching
-  * @param ifl To indicate, which ephemeris should be used (SEFLG_MOSEPH only)
+  * @param ifl To indicate, which ephemeris should be used (SEFLG_JPLEPH,
+  * SEFLG_SWIEPH or SEFLG_MOSEPH)
   * @param geopos An array double[3] containing the longitude, latitude and
   * height of the geographic position
   * @param tret An array[7], on return containing the times of different
@@ -3409,7 +3428,8 @@ class Swecl
   * attr[10]:&nbsp;&nbsp;&nbsp;saros series member number<BR>
   * </CODE><P></BLOCKQUOTE><B>Attention: attr must be a double[20]!</B>
   * @param tjd_ut The Julian Day number in UT
-  * @param ifl To indicate, which ephemeris should be used (SEFLG_MOSEPH only)
+  * @param ifl To indicate, which ephemeris should be used (SEFLG_JPLEPH,
+  * SEFLG_SWIEPH or SEFLG_MOSEPH)
   * @param geopos A double[3] containing geographic longitude, latitude and
   * height in meters above sea level in this order.
   * @param attr An array[20], on return containing the attributes of the
@@ -3626,7 +3646,8 @@ class Swecl
   * tret[7]:&nbsp;&nbsp;&nbsp;time of the end of center line<BR>
   * </CODE><P><B>Attention: tret must be a double[10]!</B>
   * @param tjd_start The Julian Day number in UT, from when to start searching
-  * @param ifl To indicate, which ephemeris should be used (SEFLG_MOSEPH only)
+  * @param ifl To indicate, which ephemeris should be used (SEFLG_JPLEPH,
+  * SEFLG_SWIEPH or SEFLG_MOSEPH)
   * @param ifltype SweConst.SE_ECL_TOTAL for total eclipse or 0 for any eclipse
   * @param tret An array[10], on return containing the times of different
   * occasions of the eclipse as above
@@ -4281,7 +4302,8 @@ class Swecl
   * attr[3]:&nbsp;&nbsp;&nbsp;apparent diameter of disc.<BR>
   * attr[4]:&nbsp;&nbsp;&nbsp;apparent magnitude.<BR>
   * </CODE><P><B>Attention: attr must be a double[20]!</B>
-  * @param iflag Which ephemeris is to be used (SEFLG_MOSEPH only).
+  * @param iflag Which ephemeris is to be used (SEFLG_JPLEPH, SEFLG_SWIEPH,
+  * SEFLG_MOSEPH).
   * Additonally useable flags: SEFLG_TRUEPOS, SEFLG_HELCTR.
   * @param attr A double[20] in which the result is returned. See above for more
   * details.
@@ -4290,6 +4312,8 @@ class Swecl
   * @return SweConst.OK (0) or SweConst.ERR (-1)
   * @see swisseph.SweConst#OK
   * @see swisseph.SweConst#ERR
+  * @see swisseph.SweConst#SEFLG_JPLEPH
+  * @see swisseph.SweConst#SEFLG_SWIEPH
   * @see swisseph.SweConst#SEFLG_MOSEPH
   * @see swisseph.SweConst#SEFLG_TRUEPOS
   * @see swisseph.SweConst#SEFLG_HELCTR
@@ -4370,7 +4394,8 @@ class Swecl
   * @param ipl Planet number, if times for planet or moon are to be calculated.
   * @param starname The name of the star, if times for a star should be
   * calculated. It has to be null or the empty string otherwise!
-  * @param ifl To indicate, which ephemeris should be used (SEFLG_MOSEPH only)
+  * @param ifl To indicate, which ephemeris should be used (SEFLG_JPLEPH,
+  * SEFLG_SWIEPH or SEFLG_MOSEPH)
   * @param rsmi Specification, what type of calculation is wanted
   * (SE_CALC_RISE, SE_CALC_SET, SE_CALC_MTRANSIT, SE_CALC_ITRANSIT) plus
   * optionally SE_BIT_DISC_CENTER, when the rise time of the disc center
@@ -4392,6 +4417,8 @@ class Swecl
   * @return SweConst.OK (0) or SweConst.ERR (-1) or -2 if that body does not rise or set
   * @see swisseph.SweConst#OK
   * @see swisseph.SweConst#ERR
+  * @see swisseph.SweConst#SEFLG_JPLEPH
+  * @see swisseph.SweConst#SEFLG_SWIEPH
   * @see swisseph.SweConst#SEFLG_MOSEPH
   * @see swisseph.SweConst#SE_CALC_RISE
   * @see swisseph.SweConst#SE_CALC_SET
@@ -4478,6 +4505,11 @@ class Swecl
      * transits. also, there are cases where the moon rises in the
      * western half of the sky for a short time.
      */
+    if (do_fixstar) {
+      if (sw.swe_fixstar(starname, tjd_et, iflag, xc, serr) == SweConst.ERR) {
+        return SweConst.ERR;
+      }
+    }
     for (ii = 0, t = tjd_ut - twohrs; ii <= jmax; ii++, t += twohrs) {
       tc[ii] = t;
       if (!do_fixstar) {
@@ -4488,6 +4520,9 @@ class Swecl
       }
       /* diameter of object in km */
       if (ii == 0) {
+        if (do_fixstar) {
+          dd = 0;
+        } else
                if ((rsmi & SweConst.SE_BIT_DISC_CENTER)!=0) {
           dd = 0;
         } else if (ipl < SwephData.NDIAM && ipl >= 0) {	// added for ArrayOutOfBoundsException
@@ -4713,9 +4748,15 @@ class Swecl
       armc0 += 24;
     }
     armc0 *= 15;
+    if (do_fixstar) {
+      if (sw.swe_fixstar(starname, tjd_et, iflag, x0, serr) == SweConst.ERR) {
+        return SweConst.ERR;
+      }
+    } else {
       if (sw.swe_calc(tjd_et, ipl, iflag, x0, serr) == SweConst.ERR) {
         return SweConst.ERR;
       }
+    }
     /*
      * meridian transits
      */
@@ -5791,7 +5832,7 @@ class Swecl
   /* function finds the gauquelin sector position of a planet or fixed star
    * 
    * if starname != NULL then a star is computed.
-   * iflag: use the flags SEFLG_MOSEPH, SEFLG_TOPOCTR.
+   * iflag: use the flags SEFLG_SWIEPH, SEFLG_JPLEPH, SEFLG_MOSEPH, SEFLG_TOPOCTR.
    *
    * imeth defines method:
    *    imeth = 0    use Placidus house position
@@ -5842,8 +5883,13 @@ class Swecl
       nutlo[0] *= SwissData.RADTODEG;
       nutlo[1] *= SwissData.RADTODEG;
       armc = sl.swe_degnorm(sl.swe_sidtime0(t_ut, eps + nutlo[1], nutlo[0]) * 15 + geopos[0]);
+      if (do_fixstar) {
+        if (sw.swe_fixstar(starname, t_et, iflag, x0, serr) == SweConst.ERR)
+  	return SweConst.ERR;
+      } else {
         if (sw.swe_calc(t_et, ipl, iflag, x0, serr) == SweConst.ERR)
   	return SweConst.ERR;
+      }
       if (imeth == 1)
         x0[1] = 0;
       dgsect.val = sw.swe_house_pos(armc, geopos[1], eps + nutlo[1], 'G', x0, null);

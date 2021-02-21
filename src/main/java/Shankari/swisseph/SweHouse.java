@@ -84,6 +84,7 @@ package Shankari.swisseph;
 * @version 1.0.0a
 */
 class SweHouse
+		implements java.io.Serializable
 		{
 
   static final double MILLIARCSEC=1.0 / 3600000.0;

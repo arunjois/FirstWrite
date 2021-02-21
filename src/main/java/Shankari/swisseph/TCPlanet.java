@@ -1,7 +1,7 @@
 package Shankari.swisseph;
 
 /**
-* This class implements a TransitCalculator for one planets
+* This class implements a TransitCalculator for one planet's
 * position or speed.<p>
 * You would create a TransitCalculator from this class and
 * use the SwissEph.getTransit() methods to actually calculate
@@ -26,6 +26,7 @@ package Shankari.swisseph;
 * change from retrograde to direct movement or vice versa.
 */
 public class TCPlanet extends TransitCalculator
+		implements java.io.Serializable
 		{
 
 
@@ -44,11 +45,14 @@ double minVal = 0., maxVal = 0.;  // Thinking about it...
 
 
   /**
-  * Creates a new TransitCalculator for transits of any of the planets
+  * Creates a new TransitCalculator for transits of any of the planet's
   * positions (longitudinal / latitudinal and distance) or speeds, be
   * it in the geocentric or topocentric coordinate system, or in tropical
   * or sidereal zodiac.<p>
-  * @param sw A SwissEph object, if you have one available. May be null.
+  * @param sw A SwissEph object, if you have one available. May be null,
+  * if you don't use sidereal or topocentric mode.<br>
+  * If you use sidereal or topocentric mode, you have to make sure to set
+  * the sidereal mode or topocentric location before the transit calculations.
   * @param planet The transiting planet or object number.<br>
   * Planets from SweConst.SE_SUN up to SweConst.SE_INTP_PERG (with the
   * exception of SweConst.SE_EARTH) have their extreme speeds saved, so
@@ -67,7 +71,8 @@ double minVal = 0., maxVal = 0.;  // Thinking about it...
   * Also flags modifying the basic planet calculations, these are
   * SweConst.SEFLG_TOPOCTR, SweConst.SEFLG_EQUATORIAL, SweConst.SEFLG_HELCTR,
   * SweConst.SEFLG_TRUEPOS, and SweConst.SEFLG_SIDEREAL, plus the
-  * optional ephemeris flag SweConst.SEFLG_MOSEPH.
+  * optional ephemeris flags SweConst.SEFLG_MOSEPH, SweConst.SEFLG_SWIEPH or
+  * SweConst.SEFLG_JPLEPH optionally.
   * <br>For <i>right ascension</i> use <code>SEFLG_TRANSIT_LONGITUDE | SEFLG_EQUATORIAL</code>,
   * for <i>declination</i> <code>SEFLG_TRANSIT_LATITUDE | SEFLG_EQUATORIAL</code>.<br>
   * @param offset This is the desired transit degree or distance in AU or transit speed
@@ -86,6 +91,8 @@ double minVal = 0., maxVal = 0.;  // Thinking about it...
   * @see swisseph.SweConst#SEFLG_TRUEPOS
   * @see swisseph.SweConst#SEFLG_SIDEREAL
   * @see swisseph.SweConst#SEFLG_MOSEPH
+  * @see swisseph.SweConst#SEFLG_SWIEPH
+  * @see swisseph.SweConst#SEFLG_JPLEPH
   */
   public TCPlanet(SwissEph sw, int planet, int flags, double offset) {
     this(sw, planet, flags, offset, 200, 1.4);
@@ -95,19 +102,24 @@ double minVal = 0., maxVal = 0.;  // Thinking about it...
   * positions (longitudinal / latitudinal and distance) or speeds, be
   * it in the geocentric or topocentric coordinate system, or in tropical
   * or sidereal zodiac.<p>
-  * @param sw A SwissEph object, if you have one available. May be null.
+  * @param sw A SwissEph object, if you have one available. May be null,
+  * if you don't use sidereal or topocentric mode.<br>
+  * If you use sidereal or topocentric mode, you have to make sure to set
+  * the sidereal mode or topocentric location before the transit calculations.
   * @param planet The transiting planet or object number.<br>
   * Planets from SweConst.SE_SUN up to SweConst.SE_INTP_PERG (with the
   * exception of SweConst.SE_EARTH) have their extreme speeds saved, so
   * these extreme speeds will be used on calculation.<br>Other objects 
   * calculate extreme speeds by randomly calculating by default 200 speed
   * values and multiply them by 1.4 as a safety factor.<br>
-  * Changing the 200 calculations will give higher or lower startup time
-  * on <code>new TCPlanet(...)</code>, changing the 1.4 safety factor will
-  * change each single calculation time.<br>
   * ATTENTION: be sure to understand that you might be able to miss some
   * transit on these other objects or you might get a rather bad transit
   * time in very rare circumstances.<br>
+  * Changing the amount of 200 pre-calculations will give higher or lower startup time
+  * on <code>new TCPlanet(...)</code>, changing the 1.4 safety factor will
+  * change each single calculation time.<br>
+  * Be careful when reducing the safety factor, as you might miss some
+  * transits or get bad transit points sometimes.<br>
   * Use SweConst.SE_AST_OFFSET + asteroid number for planets with a
   * planet number not defined by SweConst.SEFLG_*.
   * @param flags The calculation type flags (SweConst.SEFLG_TRANSIT_LONGITUDE,
@@ -117,7 +129,8 @@ double minVal = 0., maxVal = 0.;  // Thinking about it...
   * Also flags modifying the basic planet calculations, these are
   * SweConst.SEFLG_TOPOCTR, SweConst.SEFLG_EQUATORIAL, SweConst.SEFLG_HELCTR,
   * SweConst.SEFLG_TRUEPOS, and SweConst.SEFLG_SIDEREAL, plus the (optional)
-  * ephemeris flag SweConst.SEFLG_MOSEPH.
+  * ephemeris flags SweConst.SEFLG_MOSEPH, SweConst.SEFLG_SWIEPH or
+  * SweConst.SEFLG_JPLEPH.
   * <br>For <i>right ascension</i> use <code>SEFLG_TRANSIT_LONGITUDE | SEFLG_EQUATORIAL</code>,
   * for <i>declination</i> <code>SEFLG_TRANSIT_LATITUDE | SEFLG_EQUATORIAL</code>.<br>
   * @param offset This is the desired transit degree or distance (in AU) or transit speed
@@ -141,6 +154,8 @@ double minVal = 0., maxVal = 0.;  // Thinking about it...
   * @see swisseph.SweConst#SEFLG_TRUEPOS
   * @see swisseph.SweConst#SEFLG_SIDEREAL
   * @see swisseph.SweConst#SEFLG_MOSEPH
+  * @see swisseph.SweConst#SEFLG_SWIEPH
+  * @see swisseph.SweConst#SEFLG_JPLEPH
   */
   public TCPlanet(SwissEph sw, int planet, int flags, double offset, int precalcCount, double precalcSafetyfactor) {
     // Check parameter: //////////////////////////////////////////////////////
@@ -259,6 +274,24 @@ double minVal = 0., maxVal = 0.;  // Thinking about it...
   */
   public boolean getRollover() {
     return rollover;
+  }
+  /**
+   * @return Returns the lowest possible offset value.
+   */
+  public double getMinOffset() {
+    if ((tflags & SweConst.SEFLG_TRANSIT_SPEED) != 0) {
+      return getSpeed(true, false);
+    }
+    return 0.;
+  }
+  /**
+   * @return Returns the highest possible offset value.
+   */
+  public double getMaxOffset() {
+    if ((tflags & SweConst.SEFLG_TRANSIT_SPEED) != 0) {
+      return getSpeed(false, false);
+    }
+    return 360.;
   }
   /**
   * This sets the degree or other value for the position or speed of
@@ -451,10 +484,13 @@ double minVal = 0., maxVal = 0.;  // Thinking about it...
 
 
   private double getSpeed(boolean min) {
+    boolean speed = ((tflags&SweConst.SEFLG_TRANSIT_SPEED) != 0);
+    return getSpeed(min, speed);
+  }
+  private double getSpeed(boolean min, boolean speed) {
     boolean lon = ((tflags&SweConst.SEFLG_TRANSIT_LONGITUDE) != 0);
     boolean lat = ((tflags&SweConst.SEFLG_TRANSIT_LATITUDE) != 0);
     boolean dist = ((tflags&SweConst.SEFLG_TRANSIT_DISTANCE) != 0);
-    boolean speed = ((tflags&SweConst.SEFLG_TRANSIT_SPEED) != 0);
     boolean topo = ((tflags&SweConst.SEFLG_TOPOCTR) != 0);
     boolean helio = ((tflags&SweConst.SEFLG_HELCTR) != 0);
     boolean rect = ((tflags&SweConst.SEFLG_EQUATORIAL) != 0 && !lat && !dist);
@@ -587,7 +623,7 @@ double minVal = 0., maxVal = 0.;  // Thinking about it...
       FilePtr fptr = null;
       SwissephException se = null;
       try {
-//        fptr = sw.swi_fopen(SwephData.SEI_FILE_ANY_AST, fn, sw.swed.ephepath, serr);
+        fptr = sw.swi_fopen(SwephData.SEI_FILE_ANY_AST, fn, sw.swed.ephepath, serr);
       } catch (SwissephException se1) {
         se = se1;
       }
@@ -596,10 +632,10 @@ double minVal = 0., maxVal = 0.;  // Thinking about it...
          * try also for short files (..s.se1)
          */
         if (fn.indexOf("s.") <= 0) {
-//          fn = fn.substring(0, fn.indexOf(".")) + "s." + SwephData.SE_FILE_SUFFIX;
+          fn = fn.substring(0, fn.indexOf(".")) + "s." + SwephData.SE_FILE_SUFFIX;
         }
         try {
-          //fptr = sw.swi_fopen(SwephData.SEI_FILE_ANY_AST, fn, sw.swed.ephepath, serr);
+          fptr = sw.swi_fopen(SwephData.SEI_FILE_ANY_AST, fn, sw.swed.ephepath, serr);
         } catch (SwissephException se2) {
           se = se2;
         }
@@ -614,7 +650,7 @@ double minVal = 0., maxVal = 0.;  // Thinking about it...
       // Now finally we have a filename for which we can get the time range,
       // if the file can be found and is readable:
       try {
-//        timerange = sw.getDatafileTimerange(fn);
+        timerange = sw.getDatafileTimerange(fn);
       } catch (SwissephException se3) {
       }
     }

@@ -79,6 +79,7 @@ package Shankari.swisseph;
 * @version 1.0.0a
 */
 public class IntObj
+		implements java.io.Serializable
 		{
   /**
   * This is the integer value that has become wrapped up into a real object.

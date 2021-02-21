@@ -1,6 +1,7 @@
 package Shankari.swisseph;
 
 public class SwissephException extends RuntimeException
+		implements java.io.Serializable
 		{
   private double jdet=0;
   private int type=0;
@@ -128,7 +129,7 @@ public class SwissephException extends RuntimeException
 
   /**
   * Returns the julian day number as ET of the current process.
-  * May return <i>Infinity</i>, if no date is available.
+  * @return Julian day number. May return <i>Infinity</i>, if no date is available.
   */
   public double getJD() {
     return jdet;

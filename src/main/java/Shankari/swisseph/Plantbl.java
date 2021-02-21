@@ -69,6 +69,7 @@
 package Shankari.swisseph;
 
 class Plantbl
+		implements java.io.Serializable
 		{
   short max_harmonic[]=new short[9];
   short max_power_of_t;

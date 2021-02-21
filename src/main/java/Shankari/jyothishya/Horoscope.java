@@ -20,17 +20,66 @@
 
 package Shankari.jyothishya;
 
-import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
+import Shankari.core.Date;
+import Shankari.swisseph.SweConst;
+import Shankari.swisseph.SweDate;
+import Shankari.swisseph.SwissData;
+import Shankari.swisseph.SwissEph;
 
-import java.util.ArrayList;
+import java.util.HashMap;
+
+
 
 public class Horoscope {
+    public enum Planets {
+        SUN,
+        MOON,
+        MERCURY,
+        VENUS,
+        MARS,
+        JUPITER,
+        SATURN
+    }
     Person person;
+    HashMap<String, Double> basic = new HashMap<String, Double>();
     Dasa dasa;
     public Horoscope(Person p) {
         person = p;
     }
+    public void calcBasic() {
+        SwissEph swe = new SwissEph();
+        SweDate sweDate = new SweDate(person.dob.getYear(), person.dob.getMon(), person.dob.getDay(), person.getTime()) ;
+        double[] cusps = new double[13];
+        double[] acsc = new double[10];
+        double[] xp = new double[6];
+        StringBuffer serr = new StringBuffer();
+        double ayanamsa = swe.swe_get_ayanamsa_ut(sweDate.getJulDay());
+        int flags = SweConst.SEFLG_SIDEREAL;
+        int result = swe.swe_houses(sweDate.getJulDay(), flags, person.getLatitude(), person.getLatitude(), 'P', cusps, acsc);
+        int[] planets = { SweConst.SE_SUN, SweConst.SE_MOON, SweConst.SE_MARS, SweConst.SE_MERCURY, SweConst.SE_JUPITER,
+                SweConst.SE_VENUS, SweConst.SE_SATURN, SweConst.SE_TRUE_NODE }; // Some
+        // systems
+        // prefer
+        // SE_MEAN_NODE
+
+        flags = SweConst.SEFLG_SWIEPH | // fastest method, requires data files
+                SweConst.SEFLG_SIDEREAL | // sidereal zodiac
+                SweConst.SEFLG_NONUT | // will b e set automatically for sidereal
+                // calculations, if not set here
+                SweConst.SEFLG_SPEED; // to determine retrograde vs. direct
+        // motion
+        int sign;
+        int house;
+        boolean retrograde = false;
+
+    }
+    public void calcChart() {
+
+    }
+    public void calcDasa() {
+
+    }
+
 
 
 
