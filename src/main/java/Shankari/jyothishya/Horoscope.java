@@ -25,7 +25,7 @@ import Shankari.swisseph.SweDate;
 import Shankari.swisseph.SwissEph;
 
 import java.util.HashMap;
-
+import java.util.Map;
 
 
 public class Horoscope {
@@ -35,6 +35,10 @@ public class Horoscope {
     public Horoscope(Person p) {
         person = p;
     }
+
+    /**
+     *   This method calculates the basic planet positions.
+     */
     public void calcBasic() {
         SwissEph swe = new SwissEph();
         SweDate sweDate = new SweDate(person.dob.getYear(), person.dob.getMon(), person.dob.getDay(), person.getTime());
@@ -81,7 +85,7 @@ public class Horoscope {
         xp[0] = (xp[0] + 180.0) % 360;
         String planetName = "Ketu (true)";
         basic.put(planetName,xp[0]);
-
+        System.out.println(basic.get("Sun"));
 
     }
     public void calcChart() {

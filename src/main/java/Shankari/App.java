@@ -71,6 +71,7 @@ public class App extends Application {
         primaryStage.setScene(scene);
         primaryStage.show();
         primaryStage.setMaximized(true);
+        h.calcBasic();
     }
     public static void main(String[] args) {
         Preliminary p = new Preliminary();
